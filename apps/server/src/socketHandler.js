@@ -58,65 +58,49 @@ function setupSockets(io) {
     });
 
     // --- ROOM LEAVE ---
-    socket.on('room:leave', ({ code, userId }, callback) => {
-      if (code && userId) {
-        const res = roomStore.leaveRoom(code, userId);
-        socket.leave(code.toUpperCase());
-        if (res && res.room) {
-          io.to(code.toUpperCase()).emit('room:sync_state', res.room);
-        }
+    socket.on('room:leave', ({ roomCode, userId }) => {
+      if (!roomCode || !userId) return;
+      const result = roomStore.leaveRoom(roomCode, userId);
+      socket.leave(roomCode);
+      if (result && result.room) {
+        io.to(roomCode).emit('room:sync_state', result.room);
       }
-      currentRoomCode = null;
-      currentUserId = null;
-      if (typeof callback === 'function') callback({ success: true });
     });
 
-    // --- MUSIC SYNC ---
+    // --- MUSIC SYNC & CONTROLS ---
     socket.on('music:state_change', ({ roomCode, isPlaying, positionMs, currentTrackIndex }) => {
       if (!roomCode) return;
-      const updatedMusic = roomStore.updateMusic(roomCode, { isPlaying, positionMs, currentTrackIndex });
-      if (updatedMusic) {
-        socket.to(roomCode.toUpperCase()).emit('music:sync_state', updatedMusic);
-      }
-    });
-
-    socket.on('music:track_change', ({ roomCode, trackIndex }) => {
-      if (!roomCode) return;
-      const updatedMusic = roomStore.updateMusic(roomCode, {
-        currentTrackIndex: trackIndex,
-        positionMs: 0,
-        isPlaying: true
-      });
+      const updatedMusic = roomStore.updateMusicState(roomCode, { isPlaying, positionMs, currentTrackIndex });
       if (updatedMusic) {
         io.to(roomCode.toUpperCase()).emit('music:sync_state', updatedMusic);
       }
     });
 
-    // --- LIVE CHAT ---
-    socket.on('chat:send_message', ({ roomCode, text, senderId, senderName, avatarColor }) => {
-      if (!roomCode || !text) return;
-      const newMsg = roomStore.addMessage(roomCode, { senderId, senderName, text, avatarColor });
-      if (newMsg) {
-        io.to(roomCode.toUpperCase()).emit('chat:new_message', newMsg);
+    socket.on('music:track_change', ({ roomCode, trackIndex }) => {
+      if (!roomCode) return;
+      const updatedMusic = roomStore.changeTrack(roomCode, trackIndex);
+      if (updatedMusic) {
+        io.to(roomCode.toUpperCase()).emit('music:sync_state', updatedMusic);
       }
     });
 
-    // --- FLOATING HEARTS & REACTION BROADCAST ---
-    socket.on('chat:floating_heart', ({ roomCode, senderName }) => {
-      if (!roomCode) return;
-      io.to(roomCode.toUpperCase()).emit('chat:floating_heart_broadcast', {
-        senderName: senderName || 'Someone',
-        timestamp: Date.now()
-      });
+    // --- CHAT & EMOTE REACTIONS ---
+    socket.on('chat:send_message', ({ roomCode, text, senderId, senderName, avatarColor }) => {
+      if (!roomCode || !text) return;
+      const message = roomStore.addMessage(roomCode, { text, senderId, senderName, avatarColor });
+      if (message) {
+        io.to(roomCode.toUpperCase()).emit('chat:new_message', message);
+      }
     });
 
     socket.on('chat:quick_reaction', ({ roomCode, emoji, senderName }) => {
-      if (!roomCode || !emoji) return;
-      io.to(roomCode.toUpperCase()).emit('chat:reaction_broadcast', {
-        emoji,
-        senderName: senderName || 'Partner',
-        timestamp: Date.now()
-      });
+      if (!roomCode) return;
+      io.to(roomCode.toUpperCase()).emit('chat:reaction_broadcast', { emoji, senderName });
+    });
+
+    socket.on('chat:floating_heart', ({ roomCode, senderName }) => {
+      if (!roomCode) return;
+      io.to(roomCode.toUpperCase()).emit('chat:floating_heart_broadcast', { senderName });
     });
 
     // --- MULTIPLAYER GAMES ---
@@ -166,6 +150,38 @@ function setupSockets(io) {
       if (wyr) {
         io.to(roomCode.toUpperCase()).emit('game:wyr_update', wyr);
       }
+    });
+
+    // --- WEBRTC MOVIE STREAMING & AUDIO SIGNALING ---
+    socket.on('webrtc:signal', ({ roomCode, targetUserId, signal, type, senderId, senderName }) => {
+      if (!roomCode) return;
+      socket.to(roomCode.toUpperCase()).emit('webrtc:signal', {
+        targetUserId,
+        signal,
+        type,
+        senderId: senderId || socket.id,
+        senderName
+      });
+    });
+
+    socket.on('movie:stream_started', ({ roomCode, streamType, title, streamerName }) => {
+      if (!roomCode) return;
+      socket.to(roomCode.toUpperCase()).emit('movie:stream_started', {
+        streamType,
+        title,
+        streamerName,
+        streamerId: socket.id
+      });
+    });
+
+    socket.on('movie:stream_stopped', ({ roomCode }) => {
+      if (!roomCode) return;
+      socket.to(roomCode.toUpperCase()).emit('movie:stream_stopped');
+    });
+
+    socket.on('movie:player_sync', ({ roomCode, isPlaying, currentTime }) => {
+      if (!roomCode) return;
+      socket.to(roomCode.toUpperCase()).emit('movie:player_sync', { isPlaying, currentTime });
     });
 
     // --- DISCONNECT ---

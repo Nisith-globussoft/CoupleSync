@@ -4,6 +4,7 @@ import { playClickSound, playHeartSound, playSuccessFanfare } from '../utils/sou
 import {
   Heart,
   Plus,
+  Tv,
   LogIn,
   Music2,
   Gamepad2,
@@ -535,12 +536,34 @@ export const RoomLobby = () => {
           </p>
         </div>
 
-        <div className="glass-card" style={{ padding: '22px' }}>
+                <div className="glass-card" style={{ padding: '22px' }}>
           <div style={{
             width: '44px',
             height: '44px',
             borderRadius: '12px',
             background: 'rgba(245, 158, 11, 0.15)',
+            border: '1px solid rgba(245, 158, 11, 0.3)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginBottom: '14px'
+          }}>
+            <Tv size={22} color="#f59e0b" />
+          </div>
+          <h3 style={{ fontSize: '1.05rem', fontWeight: 700, color: '#ffffff', marginBottom: '6px' }}>
+            Movie Stream & Theater
+          </h3>
+          <p style={{ fontSize: '0.84rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+            Google Meet style screen & movie audio sharing, downloaded video playback, popcorn reactions & voice talk!
+          </p>
+        </div>
+
+        <div className="glass-card" style={{ padding: '22px' }}>
+          <div style={{
+            width: '44px',
+            height: '44px',
+            borderRadius: '12px',
+            background: 'rgba(244, 63, 94, 0.15)',
             border: '1px solid rgba(245, 158, 11, 0.3)',
             display: 'flex',
             alignItems: 'center',

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useRoom } from '../context/RoomContext';
 import { playClickSound, playHeartSound } from '../utils/soundEffects';
 import { MusicPlayer } from './MusicPlayer';
+import { MovieRoom } from './MovieRoom';
 import { ChatBox } from './ChatBox';
 import { LoveWall } from './LoveWall';
 import { GameSelector } from './games/GameSelector';
@@ -19,7 +20,8 @@ import {
   Share2,
   ArrowLeft,
   Sparkles,
-  Award
+  Award,
+  Tv
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -58,7 +60,7 @@ export const RoomView = () => {
 
   return (
     <div style={{
-      maxWidth: '740px',
+      maxWidth: '780px',
       margin: '20px auto',
       padding: '0 16px 40px'
     }}>
@@ -201,7 +203,7 @@ export const RoomView = () => {
           </div>
         </div>
 
-        {/* Navigation Tabs (Music / Games / Chat / Love Wall) */}
+        {/* Navigation Tabs (Music / Movies / Games / Chat / Love Wall) */}
         <div style={{
           display: 'flex',
           background: 'rgba(0, 0, 0, 0.35)',
@@ -213,6 +215,7 @@ export const RoomView = () => {
           overflowX: 'auto',
           scrollbarWidth: 'none'
         }}>
+          {/* Music Tab */}
           <button
             onClick={() => handleTabChange('music')}
             style={{
@@ -221,8 +224,8 @@ export const RoomView = () => {
               color: activeTab === 'music' ? '#090714' : 'var(--text-muted)',
               border: 'none',
               borderRadius: '999px',
-              padding: '10px 14px',
-              fontSize: '0.86rem',
+              padding: '9px 12px',
+              fontSize: '0.84rem',
               fontWeight: 700,
               cursor: 'pointer',
               display: 'flex',
@@ -238,6 +241,33 @@ export const RoomView = () => {
             <span>Music</span>
           </button>
 
+          {/* Movie Stream Tab (BRAND NEW!) */}
+          <button
+            onClick={() => handleTabChange('movies')}
+            style={{
+              flex: 1,
+              background: activeTab === 'movies' ? 'linear-gradient(135deg, #f59e0b, #ec4899)' : 'none',
+              color: activeTab === 'movies' ? '#ffffff' : 'var(--text-muted)',
+              border: 'none',
+              borderRadius: '999px',
+              padding: '9px 12px',
+              fontSize: '0.84rem',
+              fontWeight: 700,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '6px',
+              transition: 'all 0.2s ease',
+              boxShadow: activeTab === 'movies' ? '0 4px 16px rgba(245, 158, 11, 0.45)' : 'none',
+              whiteSpace: 'nowrap'
+            }}
+          >
+            <Tv size={15} />
+            <span>Movie Stream</span>
+          </button>
+
+          {/* Games Tab */}
           <button
             onClick={() => handleTabChange('games')}
             style={{
@@ -246,8 +276,8 @@ export const RoomView = () => {
               color: activeTab === 'games' ? '#090714' : 'var(--text-muted)',
               border: 'none',
               borderRadius: '999px',
-              padding: '10px 14px',
-              fontSize: '0.86rem',
+              padding: '9px 12px',
+              fontSize: '0.84rem',
               fontWeight: 700,
               cursor: 'pointer',
               display: 'flex',
@@ -263,6 +293,7 @@ export const RoomView = () => {
             <span>Games</span>
           </button>
 
+          {/* Chat Tab */}
           <button
             onClick={() => handleTabChange('chat')}
             style={{
@@ -271,8 +302,8 @@ export const RoomView = () => {
               color: activeTab === 'chat' ? '#090714' : 'var(--text-muted)',
               border: 'none',
               borderRadius: '999px',
-              padding: '10px 14px',
-              fontSize: '0.86rem',
+              padding: '9px 12px',
+              fontSize: '0.84rem',
               fontWeight: 700,
               cursor: 'pointer',
               display: 'flex',
@@ -288,6 +319,7 @@ export const RoomView = () => {
             <span>Chat</span>
           </button>
 
+          {/* Love Wall Tab */}
           <button
             onClick={() => handleTabChange('love_wall')}
             style={{
@@ -296,8 +328,8 @@ export const RoomView = () => {
               color: activeTab === 'love_wall' ? '#ffffff' : 'var(--text-muted)',
               border: 'none',
               borderRadius: '999px',
-              padding: '10px 14px',
-              fontSize: '0.86rem',
+              padding: '9px 12px',
+              fontSize: '0.84rem',
               fontWeight: 700,
               cursor: 'pointer',
               display: 'flex',
@@ -316,6 +348,8 @@ export const RoomView = () => {
 
         {/* Tab Content Display */}
         {activeTab === 'music' && <MusicPlayer />}
+
+        {activeTab === 'movies' && <MovieRoom />}
 
         {activeTab === 'games' && (
           <div>

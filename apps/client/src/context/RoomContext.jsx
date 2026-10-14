@@ -458,6 +458,7 @@ export const RoomProvider = ({ children }) => {
       value={{
         room,
         currentUser,
+        socket,
         activeTab,
         setActiveTab,
         connected,
