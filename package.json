@@ -1,0 +1,19 @@
+{
+  "name": "couplesync-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "CoupleSync - Real-time social hangout & sync platform for couples",
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "install:all": "npm install && npm --prefix apps/server install && npm --prefix apps/client install",
+    "dev": "concurrently -n \"SERVER,CLIENT\" -c \"magenta,cyan\" \"npm run dev:server\" \"npm run dev:client\"",
+    "dev:server": "npm --prefix apps/server run dev",
+    "dev:client": "npm --prefix apps/client run dev",
+    "build:client": "npm --prefix apps/client run build"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}
