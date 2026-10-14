@@ -16,7 +16,7 @@ function setupSockets(io) {
         currentRoomCode = room.code;
         currentUserId = user.id;
 
-        socket.join(room.code);
+        socket.join(room.code.toUpperCase());
         console.log(`[Room] Created ${room.code} by ${user.name}`);
 
         if (typeof callback === 'function') {
@@ -41,12 +41,11 @@ function setupSockets(io) {
         currentRoomCode = room.code;
         currentUserId = user.id;
 
-        socket.join(room.code);
+        socket.join(room.code.toUpperCase());
         console.log(`[Room] ${user.name} joined ${room.code}`);
 
-        // Notify other room members
-        socket.to(room.code).emit('room:member_joined', { user, members: room.members, messages: room.messages });
-        io.to(room.code).emit('room:sync_state', room);
+        socket.to(room.code.toUpperCase()).emit('room:member_joined', { user, members: room.members, messages: room.messages });
+        io.to(room.code.toUpperCase()).emit('room:sync_state', room);
 
         if (typeof callback === 'function') {
           callback({ success: true, room, user });
@@ -61,9 +60,9 @@ function setupSockets(io) {
     socket.on('room:leave', ({ roomCode, userId }) => {
       if (!roomCode || !userId) return;
       const result = roomStore.leaveRoom(roomCode, userId);
-      socket.leave(roomCode);
+      socket.leave(roomCode.toUpperCase());
       if (result && result.room) {
-        io.to(roomCode).emit('room:sync_state', result.room);
+        io.to(roomCode.toUpperCase()).emit('room:sync_state', result.room);
       }
     });
 
@@ -153,35 +152,39 @@ function setupSockets(io) {
     });
 
     // --- WEBRTC MOVIE STREAMING & AUDIO SIGNALING ---
-    socket.on('webrtc:signal', ({ roomCode, targetUserId, signal, type, senderId, senderName }) => {
-      if (!roomCode) return;
-      socket.to(roomCode.toUpperCase()).emit('webrtc:signal', {
-        targetUserId,
-        signal,
-        type,
-        senderId: senderId || socket.id,
-        senderName
+    socket.on('webrtc:signal', (data) => {
+      const code = data.roomCode || currentRoomCode;
+      if (!code) return;
+      console.log(`[WebRTC] Relay signal '${data.type}' in room ${code}`);
+      socket.to(code.toUpperCase()).emit('webrtc:signal', {
+        ...data,
+        senderId: socket.id
       });
     });
 
-    socket.on('movie:stream_started', ({ roomCode, streamType, title, streamerName }) => {
-      if (!roomCode) return;
-      socket.to(roomCode.toUpperCase()).emit('movie:stream_started', {
-        streamType,
-        title,
-        streamerName,
+    socket.on('movie:stream_started', (data) => {
+      const code = data.roomCode || currentRoomCode;
+      if (!code) return;
+      console.log(`[Movie] Stream started in room ${code} by ${data.streamerName}`);
+      socket.to(code.toUpperCase()).emit('movie:stream_started', {
+        ...data,
         streamerId: socket.id
       });
     });
 
-    socket.on('movie:stream_stopped', ({ roomCode }) => {
-      if (!roomCode) return;
-      socket.to(roomCode.toUpperCase()).emit('movie:stream_stopped');
+    socket.on('movie:stream_stopped', (data) => {
+      const code = data?.roomCode || currentRoomCode;
+      if (!code) return;
+      console.log(`[Movie] Stream stopped in room ${code}`);
+      socket.to(code.toUpperCase()).emit('movie:stream_stopped');
     });
 
-    socket.on('movie:player_sync', ({ roomCode, isPlaying, currentTime }) => {
-      if (!roomCode) return;
-      socket.to(roomCode.toUpperCase()).emit('movie:player_sync', { isPlaying, currentTime });
+    socket.on('movie:request_active_stream', (data) => {
+      const code = data?.roomCode || currentRoomCode;
+      if (!code) return;
+      socket.to(code.toUpperCase()).emit('movie:request_active_stream', {
+        requesterId: socket.id
+      });
     });
 
     // --- DISCONNECT ---

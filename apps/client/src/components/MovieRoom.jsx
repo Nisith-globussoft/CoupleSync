@@ -3,7 +3,6 @@ import { useRoom } from '../context/RoomContext';
 import {
   playClickSound,
   playHeartSound,
-  playHugSound,
   playSuccessFanfare
 } from '../utils/soundEffects';
 import {
@@ -12,8 +11,6 @@ import {
   FileVideo,
   Mic,
   MicOff,
-  Volume2,
-  VolumeX,
   Maximize2,
   Minimize2,
   Lightbulb,
@@ -22,9 +19,8 @@ import {
   Send,
   Sparkles,
   MessageCircle,
-  Share2,
   AlertCircle,
-  CheckCircle2
+  Volume2
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -50,7 +46,6 @@ export const MovieRoom = () => {
     room,
     currentUser,
     socket,
-    connected,
     sendMessage,
     showToast,
     triggerFloatingHearts
@@ -60,33 +55,79 @@ export const MovieRoom = () => {
   const localStreamRef = useRef(null);
   const peerConnectionRef = useRef(null);
   const micStreamRef = useRef(null);
+  const iceQueueRef = useRef([]);
 
   const [isStreaming, setIsStreaming] = useState(false);
-  const [streamType, setStreamType] = useState(null); // 'screen' | 'file'
+  const [isLocalStreamer, setIsLocalStreamer] = useState(false);
+  const [activeStream, setActiveStream] = useState(null);
   const [movieTitle, setMovieTitle] = useState('Our Romantic Movie Night');
+  const [streamerName, setStreamerName] = useState(null);
   const [isDimmed, setIsDimmed] = useState(false);
   const [isMicOn, setIsMicOn] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [showChatDrawer, setShowChatDrawer] = useState(true);
+  const [needsUserUnmute, setNeedsUserUnmute] = useState(false);
   const [chatInput, setChatInput] = useState('');
   const [floatingReactions, setFloatingReactions] = useState([]);
-  const [streamerName, setStreamerName] = useState(null);
 
-  // Setup WebRTC signaling listeners
+  // Attach media stream to video element whenever activeStream or videoRef changes
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !activeStream) return;
+
+    console.log('[MovieRoom] Attaching activeStream to video element. isLocalStreamer:', isLocalStreamer);
+    video.srcObject = activeStream;
+
+    if (isLocalStreamer) {
+      video.muted = true; // Avoid audio feedback echo on the host machine
+      video.play().catch(e => console.warn('Host play preview err:', e));
+    } else {
+      video.muted = false; // Receiver MUST hear movie sound!
+      const playPromise = video.play();
+      if (playPromise !== undefined) {
+        playPromise.catch(err => {
+          console.warn('[MovieRoom] Autoplay prevented by browser:', err);
+          // Show big clickable prompt to start video with sound
+          setNeedsUserUnmute(true);
+        });
+      }
+    }
+  }, [activeStream, isLocalStreamer]);
+
+  // Request active stream on mount if joining an in-progress session
+  useEffect(() => {
+    if (socket && room?.code) {
+      console.log('[MovieRoom] Asking if anyone is streaming in room', room.code);
+      socket.emit('movie:request_active_stream', { roomCode: room.code });
+    }
+  }, [socket, room?.code]);
+
+  // WebRTC & Stream Event Listeners
   useEffect(() => {
     if (!socket) return;
 
-    const handleSignal = async ({ signal, type, senderId, senderName }) => {
+    const handleSignal = async ({ signal, type, senderName }) => {
+      console.log(`[WebRTC] Received signal type: '${type}' from '${senderName}'`);
       try {
         let pc = peerConnectionRef.current;
-        if (!pc) {
-          pc = createPeerConnection();
-        }
 
         if (type === 'offer') {
-          console.log('[WebRTC] Received offer from', senderName);
-          setStreamerName(senderName);
+          console.log('[WebRTC] Processing incoming offer from', senderName);
+          setIsStreaming(true);
+          setIsLocalStreamer(false);
+          setStreamerName(senderName || 'Partner');
+
+          if (!pc) {
+            pc = createPeerConnection();
+          }
+
           await pc.setRemoteDescription(new RTCSessionDescription(signal));
+
+          // Flush queued candidates
+          while (iceQueueRef.current.length > 0) {
+            const cand = iceQueueRef.current.shift();
+            await pc.addIceCandidate(new RTCIceCandidate(cand)).catch(e => console.warn('ICE add err:', e));
+          }
+
           const answer = await pc.createAnswer();
           await pc.setLocalDescription(answer);
 
@@ -96,43 +137,87 @@ export const MovieRoom = () => {
             type: 'answer',
             senderName: currentUser?.name
           });
-          showToast(senderName + ' started sharing their movie! 🎬🍿');
+
+          showToast((senderName || 'Partner') + ' started streaming their movie! 🎬🍿');
         } else if (type === 'answer') {
-          console.log('[WebRTC] Received answer');
-          await pc.setRemoteDescription(new RTCSessionDescription(signal));
+          console.log('[WebRTC] Processing incoming answer');
+          if (pc) {
+            await pc.setRemoteDescription(new RTCSessionDescription(signal));
+            while (iceQueueRef.current.length > 0) {
+              const cand = iceQueueRef.current.shift();
+              await pc.addIceCandidate(new RTCIceCandidate(cand)).catch(e => console.warn('ICE add err:', e));
+            }
+          }
         } else if (type === 'candidate' && signal) {
-          await pc.addIceCandidate(new RTCIceCandidate(signal));
+          if (pc && pc.remoteDescription) {
+            await pc.addIceCandidate(new RTCIceCandidate(signal)).catch(e => console.warn('Add candidate err:', e));
+          } else {
+            iceQueueRef.current.push(signal);
+          }
         }
       } catch (err) {
-        console.error('[WebRTC] Error handling signal:', err);
+        console.error('[WebRTC] Signal handling error:', err);
       }
     };
 
     const handleStreamStarted = ({ streamType, title, streamerName }) => {
-      setStreamType(streamType);
+      console.log('[MovieRoom] Stream started notice from', streamerName);
+      setIsStreaming(true);
+      setIsLocalStreamer(false);
       setMovieTitle(title || 'Shared Movie Stream');
-      setStreamerName(streamerName);
-      showToast(streamerName + ' is sharing movie: ' + (title || 'Screen') + ' 🎥');
+      setStreamerName(streamerName || 'Partner');
+      showToast((streamerName || 'Partner') + ' is sharing movie: ' + (title || 'Screen') + ' 🎥');
     };
 
     const handleStreamStopped = () => {
-      stopLocalStream();
-      setStreamerName(null);
+      console.log('[MovieRoom] Remote stream stopped');
+      cleanUpStreams();
       showToast('Movie stream ended by partner.');
+    };
+
+    // If another peer requests the active stream and I am currently streaming, send them a fresh offer!
+    const handleRequestActiveStream = async () => {
+      if (localStreamRef.current && peerConnectionRef.current) {
+        console.log('[MovieRoom] Responding to partner stream request with new offer');
+        try {
+          const pc = peerConnectionRef.current;
+          const offer = await pc.createOffer();
+          await pc.setLocalDescription(offer);
+
+          socket.emit('movie:stream_started', {
+            roomCode: room?.code,
+            streamType: 'screen',
+            title: movieTitle,
+            streamerName: currentUser?.name
+          });
+
+          socket.emit('webrtc:signal', {
+            roomCode: room?.code,
+            signal: offer,
+            type: 'offer',
+            senderName: currentUser?.name
+          });
+        } catch (e) {
+          console.warn('[MovieRoom] Error re-offering stream:', e);
+        }
+      }
     };
 
     socket.on('webrtc:signal', handleSignal);
     socket.on('movie:stream_started', handleStreamStarted);
     socket.on('movie:stream_stopped', handleStreamStopped);
+    socket.on('movie:request_active_stream', handleRequestActiveStream);
 
     return () => {
       socket.off('webrtc:signal', handleSignal);
       socket.off('movie:stream_started', handleStreamStarted);
       socket.off('movie:stream_stopped', handleStreamStopped);
+      socket.off('movie:request_active_stream', handleRequestActiveStream);
     };
-  }, [socket, room?.code, currentUser?.name]);
+  }, [socket, room?.code, currentUser?.name, movieTitle]);
 
   const createPeerConnection = () => {
+    console.log('[WebRTC] Creating new RTCPeerConnection');
     const pc = new RTCPeerConnection(RTC_CONFIG);
 
     pc.onicecandidate = (event) => {
@@ -147,10 +232,11 @@ export const MovieRoom = () => {
     };
 
     pc.ontrack = (event) => {
-      console.log('[WebRTC] Received remote stream track:', event.track.kind);
-      if (videoRef.current && event.streams[0]) {
-        videoRef.current.srcObject = event.streams[0];
-        videoRef.current.play().catch(e => console.warn('Autoplay error:', e));
+      console.log('[WebRTC] Received remote track:', event.track.kind, event.streams);
+      if (event.streams && event.streams[0]) {
+        setActiveStream(event.streams[0]);
+        setIsStreaming(true);
+        setIsLocalStreamer(false);
       }
     };
 
@@ -158,11 +244,11 @@ export const MovieRoom = () => {
     return pc;
   };
 
-  // 1. Google Meet style screen share (with system & movie audio)
+  // 1. Google Meet style screen & audio share
   const handleStartScreenShare = async () => {
     playClickSound();
     try {
-      // Prompt user to select screen/window/tab and share audio
+      console.log('[MovieRoom] Prompting getDisplayMedia...');
       const stream = await navigator.mediaDevices.getDisplayMedia({
         video: {
           displaySurface: 'monitor',
@@ -172,21 +258,17 @@ export const MovieRoom = () => {
         audio: true
       });
 
+      console.log('[MovieRoom] Screen stream captured! Audio tracks:', stream.getAudioTracks().length);
       localStreamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.muted = true; // mute locally to avoid echo
-        videoRef.current.play().catch(() => {});
-      }
-
+      setActiveStream(stream);
       setIsStreaming(true);
-      setStreamType('screen');
+      setIsLocalStreamer(true);
       setStreamerName(currentUser?.name || 'You');
 
       const pc = createPeerConnection();
-      stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+      stream.getTracks().forEach(track => pc.addTrack(track, stream));
 
-      // Handle user stopping share from browser UI toolbar
+      // Handle user clicking native browser "Stop sharing" bar
       stream.getVideoTracks()[0].onended = () => {
         handleStopStream();
       };
@@ -199,7 +281,6 @@ export const MovieRoom = () => {
           streamerName: currentUser?.name
         });
 
-        // Create and send offer
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
 
@@ -211,7 +292,7 @@ export const MovieRoom = () => {
         });
       }
 
-      showToast('Movie screen sharing started! Ensure "Share Audio" was checked 🍿');
+      showToast('Screen sharing started! Partner can now watch with full audio 🍿');
       playSuccessFanfare();
     } catch (err) {
       console.error('Error starting screen share:', err);
@@ -219,7 +300,7 @@ export const MovieRoom = () => {
     }
   };
 
-  // 2. Select downloaded movie file from PC
+  // 2. Select local movie file from PC
   const handleSelectMovieFile = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -237,22 +318,22 @@ export const MovieRoom = () => {
     }
 
     setIsStreaming(true);
-    setStreamType('file');
+    setIsLocalStreamer(true);
     setStreamerName(currentUser?.name || 'You');
 
-    showToast('Loaded "' + cleanName + '"! You can also click Share Screen for live audio broadcast.');
+    showToast('Loaded "' + cleanName + '"! Click Share Screen if you want live audio broadcast to partner.');
   };
 
   const handleStopStream = () => {
     playClickSound();
-    stopLocalStream();
+    cleanUpStreams();
     if (socket && room?.code) {
       socket.emit('movie:stream_stopped', { roomCode: room.code });
     }
     showToast('Movie stream stopped.');
   };
 
-  const stopLocalStream = () => {
+  const cleanUpStreams = () => {
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach(t => t.stop());
       localStreamRef.current = null;
@@ -265,8 +346,22 @@ export const MovieRoom = () => {
       videoRef.current.srcObject = null;
       videoRef.current.src = '';
     }
+    setActiveStream(null);
     setIsStreaming(false);
-    setStreamType(null);
+    setIsLocalStreamer(false);
+    setNeedsUserUnmute(false);
+    setStreamerName(null);
+  };
+
+  // Unblock autoplay if browser restricted audio
+  const handleUserUnmuteClick = () => {
+    if (videoRef.current) {
+      videoRef.current.muted = false;
+      videoRef.current.play().then(() => {
+        setNeedsUserUnmute(false);
+        showToast('Movie audio playing! 🔊🍿');
+      }).catch(err => console.warn(err));
+    }
   };
 
   // Mic voice toggle
@@ -287,7 +382,6 @@ export const MovieRoom = () => {
         showToast('Microphone Enabled — you can now talk with partner! 🗣️');
         playHeartSound();
 
-        // If peer connection active, add mic track
         if (peerConnectionRef.current) {
           audioStream.getAudioTracks().forEach(track => {
             peerConnectionRef.current.addTrack(track, audioStream);
@@ -299,15 +393,11 @@ export const MovieRoom = () => {
     }
   };
 
-  // Movie Reactions (Popcorn, Love, etc)
+  // Movie Reactions
   const handleSendReaction = (emoji) => {
     playClickSound();
     if (emoji === '🍿') {
-      confetti({
-        particleCount: 25,
-        spread: 60,
-        origin: { y: 0.6 }
-      });
+      confetti({ particleCount: 25, spread: 60, origin: { y: 0.6 } });
     } else if (emoji === '💖') {
       triggerFloatingHearts();
     }
@@ -321,8 +411,7 @@ export const MovieRoom = () => {
       setFloatingReactions(prev => prev.filter(r => r.id !== newId));
     }, 2500);
 
-    // Send in chat
-    sendMessage(emoji + ' *reacted while watching*');
+    sendMessage(emoji + ' *reacted to the movie*');
   };
 
   const handleSendChat = (e) => {
@@ -398,7 +487,9 @@ export const MovieRoom = () => {
             </h3>
             <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
               {isStreaming ? (
-                <span style={{ color: '#10b981', fontWeight: 700 }}>● Live Streaming: {movieTitle}</span>
+                <span style={{ color: '#10b981', fontWeight: 700 }}>
+                  ● Live Streaming: {movieTitle} {streamerName ? '(' + streamerName + ')' : ''}
+                </span>
               ) : (
                 'Watch downloaded movies together with synchronized audio & voice chat'
               )}
@@ -469,6 +560,7 @@ export const MovieRoom = () => {
           ref={videoRef}
           controls
           playsInline
+          autoPlay
           style={{
             width: '100%',
             maxHeight: isFullscreen ? '100vh' : '480px',
@@ -477,6 +569,53 @@ export const MovieRoom = () => {
             display: isStreaming ? 'block' : 'none'
           }}
         />
+
+        {/* Autoplay Unblocker Prompt Overlay (if browser restricted unmuted autoplay) */}
+        {needsUserUnmute && (
+          <div
+            onClick={handleUserUnmuteClick}
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: '100%',
+              height: '100%',
+              background: 'rgba(0, 0, 0, 0.75)',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              zIndex: 110,
+              padding: '20px',
+              textAlign: 'center'
+            }}
+          >
+            <div style={{
+              width: '64px',
+              height: '64px',
+              borderRadius: '50%',
+              background: 'linear-gradient(135deg, #f59e0b, #ec4899)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginBottom: '14px',
+              boxShadow: '0 0 30px rgba(245, 158, 11, 0.6)',
+              animation: 'pulseGlow 1.4s infinite'
+            }}>
+              <Volume2 size={32} color="#ffffff" />
+            </div>
+            <h4 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#ffffff', marginBottom: '6px' }}>
+              Movie is Streaming! 🍿
+            </h4>
+            <p style={{ fontSize: '0.88rem', color: '#fcd34d', maxWidth: '360px', marginBottom: '16px' }}>
+              Click anywhere on this screen to start playback with full audio!
+            </p>
+            <button className="btn-primary" style={{ padding: '10px 24px', borderRadius: '999px' }}>
+              ▶️ Play Movie with Sound
+            </button>
+          </div>
+        )}
 
         {/* Floating In-Video Reactions Layer */}
         {floatingReactions.map(r => (
@@ -528,7 +667,6 @@ export const MovieRoom = () => {
 
             {/* Action Buttons */}
             <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
-              {/* Screen Share Button */}
               <button
                 onClick={handleStartScreenShare}
                 className="btn-primary"
@@ -544,7 +682,6 @@ export const MovieRoom = () => {
                 <span>Share Movie Screen (With Audio)</span>
               </button>
 
-              {/* Local File Picker */}
               <label
                 className="btn-secondary"
                 style={{
@@ -598,12 +735,12 @@ export const MovieRoom = () => {
             right: '12px',
             display: 'flex',
             gap: '8px',
-            zIndex: 10
+            zIndex: 105
           }}>
             <button
               onClick={toggleFullscreen}
               style={{
-                background: 'rgba(0, 0, 0, 0.6)',
+                background: 'rgba(0, 0, 0, 0.65)',
                 backdropFilter: 'blur(8px)',
                 border: '1px solid rgba(255, 255, 255, 0.2)',
                 borderRadius: '8px',
@@ -615,26 +752,29 @@ export const MovieRoom = () => {
               {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
             </button>
 
-            <button
-              onClick={handleStopStream}
-              style={{
-                background: 'rgba(244, 63, 94, 0.8)',
-                border: 'none',
-                borderRadius: '8px',
-                padding: '6px 12px',
-                color: '#ffffff',
-                fontSize: '0.78rem',
-                fontWeight: 700,
-                cursor: 'pointer'
-              }}
-            >
-              Stop Sharing
-            </button>
+            {isLocalStreamer && (
+              <button
+                onClick={handleStopStream}
+                style={{
+                  background: 'rgba(244, 63, 94, 0.9)',
+                  border: 'none',
+                  borderRadius: '8px',
+                  padding: '6px 14px',
+                  color: '#ffffff',
+                  fontSize: '0.8rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  boxShadow: '0 2px 10px rgba(244, 63, 94, 0.4)'
+                }}
+              >
+                Stop Sharing
+              </button>
+            )}
           </div>
         )}
       </div>
 
-      {/* Floating Movie Reaction Bar (Popcorn, Love, LOL) */}
+      {/* Floating Movie Reaction Bar */}
       <div style={{
         display: 'flex',
         alignItems: 'center',
