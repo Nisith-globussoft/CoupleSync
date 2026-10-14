@@ -3,6 +3,7 @@ import { useRoom } from '../context/RoomContext';
 import {
   playClickSound,
   playHeartSound,
+  playMessagePop,
   playSuccessFanfare
 } from '../utils/soundEffects';
 import {
@@ -20,7 +21,8 @@ import {
   Sparkles,
   MessageCircle,
   AlertCircle,
-  Volume2
+  Volume2,
+  X
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -56,6 +58,7 @@ export const MovieRoom = () => {
   const peerConnectionRef = useRef(null);
   const micStreamRef = useRef(null);
   const iceQueueRef = useRef([]);
+  const chatScrollRef = useRef(null);
 
   const [isStreaming, setIsStreaming] = useState(false);
   const [isLocalStreamer, setIsLocalStreamer] = useState(false);
@@ -68,8 +71,39 @@ export const MovieRoom = () => {
   const [needsUserUnmute, setNeedsUserUnmute] = useState(false);
   const [chatInput, setChatInput] = useState('');
   const [floatingReactions, setFloatingReactions] = useState([]);
+  const [sidePopMessage, setSidePopMessage] = useState(null);
 
-  // Attach media stream to video element whenever activeStream or videoRef changes
+  const messages = room?.messages || [];
+
+  // Auto-scroll chat messages
+  useEffect(() => {
+    chatScrollRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages.length]);
+
+  // Listen for incoming messages to trigger floating Side Pop Notification
+  const lastMessageRef = useRef(null);
+  useEffect(() => {
+    if (messages.length === 0) return;
+    const latest = messages[messages.length - 1];
+
+    if (!latest.system && latest.senderId !== currentUser?.id && latest.id !== lastMessageRef.current) {
+      lastMessageRef.current = latest.id;
+      playMessagePop();
+      setSidePopMessage({
+        id: latest.id,
+        senderName: latest.senderName || 'Partner',
+        text: latest.text
+      });
+
+      const timer = setTimeout(() => {
+        setSidePopMessage(prev => (prev?.id === latest.id ? null : prev));
+      }, 5000);
+
+      return () => clearTimeout(timer);
+    }
+  }, [messages, currentUser?.id]);
+
+  // Attach media stream to video element
   useEffect(() => {
     const video = videoRef.current;
     if (!video || !activeStream) return;
@@ -78,25 +112,24 @@ export const MovieRoom = () => {
     video.srcObject = activeStream;
 
     if (isLocalStreamer) {
-      video.muted = true; // Avoid audio feedback echo on the host machine
-      video.play().catch(e => console.warn('Host play preview err:', e));
+      video.muted = true;
+      video.play().catch(e => console.warn('Local preview play err:', e));
     } else {
-      video.muted = false; // Receiver MUST hear movie sound!
+      video.muted = false;
       const playPromise = video.play();
       if (playPromise !== undefined) {
         playPromise.catch(err => {
           console.warn('[MovieRoom] Autoplay prevented by browser:', err);
-          // Show big clickable prompt to start video with sound
           setNeedsUserUnmute(true);
         });
       }
     }
   }, [activeStream, isLocalStreamer]);
 
-  // Request active stream on mount if joining an in-progress session
+  // Request active stream on mount
   useEffect(() => {
     if (socket && room?.code) {
-      console.log('[MovieRoom] Asking if anyone is streaming in room', room.code);
+      console.log('[MovieRoom] Requesting active stream for room', room.code);
       socket.emit('movie:request_active_stream', { roomCode: room.code });
     }
   }, [socket, room?.code]);
@@ -122,7 +155,6 @@ export const MovieRoom = () => {
 
           await pc.setRemoteDescription(new RTCSessionDescription(signal));
 
-          // Flush queued candidates
           while (iceQueueRef.current.length > 0) {
             const cand = iceQueueRef.current.shift();
             await pc.addIceCandidate(new RTCIceCandidate(cand)).catch(e => console.warn('ICE add err:', e));
@@ -166,7 +198,7 @@ export const MovieRoom = () => {
       setIsLocalStreamer(false);
       setMovieTitle(title || 'Shared Movie Stream');
       setStreamerName(streamerName || 'Partner');
-      showToast((streamerName || 'Partner') + ' is sharing movie: ' + (title || 'Screen') + ' 🎥');
+      showToast((streamerName || 'Partner') + ' is sharing: ' + (title || 'Movie') + ' 🎥');
     };
 
     const handleStreamStopped = () => {
@@ -175,10 +207,9 @@ export const MovieRoom = () => {
       showToast('Movie stream ended by partner.');
     };
 
-    // If another peer requests the active stream and I am currently streaming, send them a fresh offer!
     const handleRequestActiveStream = async () => {
       if (localStreamRef.current && peerConnectionRef.current) {
-        console.log('[MovieRoom] Responding to partner stream request with new offer');
+        console.log('[MovieRoom] Re-offering active stream to joined partner');
         try {
           const pc = peerConnectionRef.current;
           const offer = await pc.createOffer();
@@ -186,7 +217,7 @@ export const MovieRoom = () => {
 
           socket.emit('movie:stream_started', {
             roomCode: room?.code,
-            streamType: 'screen',
+            streamType: 'movie',
             title: movieTitle,
             streamerName: currentUser?.name
           });
@@ -268,7 +299,6 @@ export const MovieRoom = () => {
       const pc = createPeerConnection();
       stream.getTracks().forEach(track => pc.addTrack(track, stream));
 
-      // Handle user clicking native browser "Stop sharing" bar
       stream.getVideoTracks()[0].onended = () => {
         handleStopStream();
       };
@@ -300,28 +330,75 @@ export const MovieRoom = () => {
     }
   };
 
-  // 2. Select local movie file from PC
+  // 2. Select local movie file & stream directly via WebRTC captureStream
   const handleSelectMovieFile = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     playClickSound();
-    const fileUrl = URL.createObjectURL(file);
     const cleanName = file.name.replace(/\.[^/.]+$/, "");
     setMovieTitle(cleanName);
+    const fileUrl = URL.createObjectURL(file);
 
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
-      videoRef.current.src = fileUrl;
-      videoRef.current.muted = false;
-      videoRef.current.play().catch(e => console.warn(e));
-    }
+    const video = videoRef.current;
+    if (!video) return;
 
-    setIsStreaming(true);
-    setIsLocalStreamer(true);
-    setStreamerName(currentUser?.name || 'You');
+    video.srcObject = null;
+    video.src = fileUrl;
+    video.muted = false;
 
-    showToast('Loaded "' + cleanName + '"! Click Share Screen if you want live audio broadcast to partner.');
+    video.onloadeddata = async () => {
+      try {
+        await video.play();
+
+        // Capture video & audio stream from HTML5 video element
+        let capturedStream = null;
+        if (typeof video.captureStream === 'function') {
+          capturedStream = video.captureStream(30);
+        } else if (typeof video.mozCaptureStream === 'function') {
+          capturedStream = video.mozCaptureStream(30);
+        }
+
+        if (capturedStream) {
+          console.log('[MovieRoom] Successfully captured stream from MP4 file!', capturedStream.getTracks());
+          localStreamRef.current = capturedStream;
+          setActiveStream(null); // Keep video.src = fileUrl locally for smooth playback
+          setIsStreaming(true);
+          setIsLocalStreamer(true);
+          setStreamerName(currentUser?.name || 'You');
+
+          const pc = createPeerConnection();
+          capturedStream.getTracks().forEach(track => pc.addTrack(track, capturedStream));
+
+          if (socket && room?.code) {
+            socket.emit('movie:stream_started', {
+              roomCode: room.code,
+              streamType: 'file',
+              title: cleanName,
+              streamerName: currentUser?.name
+            });
+
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+
+            socket.emit('webrtc:signal', {
+              roomCode: room.code,
+              signal: offer,
+              type: 'offer',
+              senderName: currentUser?.name
+            });
+          }
+
+          showToast('Streaming "' + cleanName + '" to your partner via WebRTC! 🎬🍿');
+          playSuccessFanfare();
+        } else {
+          showToast('Playing locally. Click "Share Movie Screen" if your browser restricts captureStream.');
+        }
+      } catch (err) {
+        console.error('Error playing or streaming file:', err);
+        showToast('Loaded file. Press play on the video!');
+      }
+    };
   };
 
   const handleStopStream = () => {
@@ -353,7 +430,6 @@ export const MovieRoom = () => {
     setStreamerName(null);
   };
 
-  // Unblock autoplay if browser restricted audio
   const handleUserUnmuteClick = () => {
     if (videoRef.current) {
       videoRef.current.muted = false;
@@ -364,7 +440,6 @@ export const MovieRoom = () => {
     }
   };
 
-  // Mic voice toggle
   const toggleMic = async () => {
     playClickSound();
     if (isMicOn) {
@@ -393,7 +468,6 @@ export const MovieRoom = () => {
     }
   };
 
-  // Movie Reactions
   const handleSendReaction = (emoji) => {
     playClickSound();
     if (emoji === '🍿') {
@@ -411,7 +485,7 @@ export const MovieRoom = () => {
       setFloatingReactions(prev => prev.filter(r => r.id !== newId));
     }, 2500);
 
-    sendMessage(emoji + ' *reacted to the movie*');
+    sendMessage(emoji + ' *reacted to movie*');
   };
 
   const handleSendChat = (e) => {
@@ -491,7 +565,7 @@ export const MovieRoom = () => {
                   ● Live Streaming: {movieTitle} {streamerName ? '(' + streamerName + ')' : ''}
                 </span>
               ) : (
-                'Watch downloaded movies together with synchronized audio & voice chat'
+                'Stream your movie or screen directly to your partner with full audio'
               )}
             </p>
           </div>
@@ -555,6 +629,43 @@ export const MovieRoom = () => {
           alignItems: 'center'
         }}
       >
+        {/* Floating Side Pop Notification when partner whispers */}
+        {sidePopMessage && (
+          <div style={{
+            position: 'absolute',
+            top: '16px',
+            right: '16px',
+            maxWidth: '280px',
+            background: 'rgba(236, 72, 153, 0.95)',
+            backdropFilter: 'blur(12px)',
+            border: '1px solid rgba(255, 255, 255, 0.3)',
+            borderRadius: '14px',
+            padding: '10px 14px',
+            boxShadow: '0 8px 30px rgba(236, 72, 153, 0.5)',
+            zIndex: 120,
+            animation: 'float 0.3s ease-out',
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: '8px'
+          }}>
+            <Heart size={16} fill="#fff" color="#fff" style={{ flexShrink: 0, marginTop: '2px' }} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <p style={{ fontSize: '0.74rem', fontWeight: 800, color: '#fef08a', marginBottom: '2px' }}>
+                {sidePopMessage.senderName} whispers:
+              </p>
+              <p style={{ fontSize: '0.86rem', color: '#ffffff', fontWeight: 600, wordBreak: 'break-word', lineHeight: 1.35 }}>
+                {sidePopMessage.text}
+              </p>
+            </div>
+            <button
+              onClick={() => setSidePopMessage(null)}
+              style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', padding: 0 }}
+            >
+              <X size={14} />
+            </button>
+          </div>
+        )}
+
         {/* The Video Element */}
         <video
           ref={videoRef}
@@ -570,7 +681,7 @@ export const MovieRoom = () => {
           }}
         />
 
-        {/* Autoplay Unblocker Prompt Overlay (if browser restricted unmuted autoplay) */}
+        {/* Autoplay Unblocker Prompt */}
         {needsUserUnmute && (
           <div
             onClick={handleUserUnmuteClick}
@@ -580,7 +691,7 @@ export const MovieRoom = () => {
               left: 0,
               width: '100%',
               height: '100%',
-              background: 'rgba(0, 0, 0, 0.75)',
+              background: 'rgba(0, 0, 0, 0.78)',
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
@@ -609,7 +720,7 @@ export const MovieRoom = () => {
               Movie is Streaming! 🍿
             </h4>
             <p style={{ fontSize: '0.88rem', color: '#fcd34d', maxWidth: '360px', marginBottom: '16px' }}>
-              Click anywhere on this screen to start playback with full audio!
+              Click anywhere to start video with sound!
             </p>
             <button className="btn-primary" style={{ padding: '10px 24px', borderRadius: '999px' }}>
               ▶️ Play Movie with Sound
@@ -662,41 +773,27 @@ export const MovieRoom = () => {
               Movie Night Cinema Ready
             </h3>
             <p style={{ fontSize: '0.88rem', color: 'var(--text-muted)', lineHeight: 1.55, marginBottom: '24px' }}>
-              Stream your downloaded movie directly to your partner with synchronized audio, or pick a movie file from your laptop.
+              Select a downloaded movie file from your PC or share your screen & audio directly to watch together!
             </p>
 
             {/* Action Buttons */}
             <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
-              <button
-                onClick={handleStartScreenShare}
+              <label
                 className="btn-primary"
                 style={{
                   padding: '12px 22px',
                   borderRadius: '12px',
                   fontSize: '0.92rem',
                   fontWeight: 700,
-                  boxShadow: '0 0 20px rgba(236, 72, 153, 0.45)'
-                }}
-              >
-                <MonitorPlay size={18} fill="#fff" />
-                <span>Share Movie Screen (With Audio)</span>
-              </button>
-
-              <label
-                className="btn-secondary"
-                style={{
-                  padding: '12px 20px',
-                  borderRadius: '12px',
-                  fontSize: '0.92rem',
-                  fontWeight: 600,
                   cursor: 'pointer',
                   display: 'inline-flex',
                   alignItems: 'center',
-                  gap: '8px'
+                  gap: '8px',
+                  boxShadow: '0 0 22px rgba(236, 72, 153, 0.5)'
                 }}
               >
-                <FileVideo size={18} color="#f59e0b" />
-                <span>Select Movie File (.mp4/.mkv)</span>
+                <FileVideo size={18} fill="#fff" />
+                <span>Select & Stream Movie (.mp4/.mkv)</span>
                 <input
                   type="file"
                   accept="video/mp4,video/webm,video/mkv,video/*"
@@ -704,9 +801,23 @@ export const MovieRoom = () => {
                   style={{ display: 'none' }}
                 />
               </label>
+
+              <button
+                onClick={handleStartScreenShare}
+                className="btn-secondary"
+                style={{
+                  padding: '12px 20px',
+                  borderRadius: '12px',
+                  fontSize: '0.92rem',
+                  fontWeight: 600
+                }}
+              >
+                <MonitorPlay size={18} color="#f59e0b" />
+                <span>Share Screen & Audio</span>
+              </button>
             </div>
 
-            {/* Google Meet Style Tip */}
+            {/* Tip */}
             <div style={{
               marginTop: '22px',
               padding: '10px 16px',
@@ -721,7 +832,7 @@ export const MovieRoom = () => {
             }}>
               <AlertCircle size={16} color="#f59e0b" style={{ flexShrink: 0, marginTop: '2px' }} />
               <div>
-                <strong style={{ color: '#ffffff' }}>Google Meet Style Tip:</strong> When sharing your movie window or tab, remember to tick <span style={{ color: '#f59e0b' }}>"Also share tab / system audio"</span> so your partner can hear every beat and dialogue!
+                <strong style={{ color: '#ffffff' }}>Tip:</strong> Choosing an MP4 streams the video and audio directly over WebRTC to your partner. You can also chat live below!
               </div>
             </div>
           </div>
@@ -813,47 +924,105 @@ export const MovieRoom = () => {
         ))}
       </div>
 
-      {/* Mini Movie Whisper Chat Box */}
+      {/* Live Whisper Chat Feed & Input Box */}
       <div className="glass-card" style={{ padding: '16px', position: 'relative', zIndex: 95 }}>
         <div style={{
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          marginBottom: '10px'
+          marginBottom: '12px'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <MessageCircle size={16} color="#ec4899" />
-            <h4 style={{ fontSize: '0.9rem', fontWeight: 700, color: '#ffffff' }}>
-              Whisper Chat While Watching
+            <h4 style={{ fontSize: '0.95rem', fontWeight: 700, color: '#ffffff' }}>
+              Live Movie Whispers
             </h4>
           </div>
-          <span style={{ fontSize: '0.72rem', color: 'var(--text-dim)' }}>
-            Real-time couple whispers
+          <span style={{ fontSize: '0.74rem', color: '#10b981', fontWeight: 600 }}>
+            ● Live Synchronized
           </span>
         </div>
 
+        {/* Messages Feed Area */}
+        <div style={{
+          maxHeight: '160px',
+          overflowY: 'auto',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '8px',
+          padding: '8px',
+          background: 'rgba(0, 0, 0, 0.25)',
+          borderRadius: '10px',
+          marginBottom: '12px'
+        }}>
+          {messages.length === 0 ? (
+            <p style={{ fontSize: '0.78rem', color: 'var(--text-dim)', textAlign: 'center', padding: '12px 0' }}>
+              No whispers yet. Send a reaction or whisper to your partner! 💖
+            </p>
+          ) : (
+            messages.slice(-15).map(m => {
+              const isMe = m.senderId === currentUser?.id;
+              if (m.system) {
+                return (
+                  <div key={m.id} style={{ textAlign: 'center', fontSize: '0.72rem', color: 'var(--accent-pink)' }}>
+                    {m.text}
+                  </div>
+                );
+              }
+              return (
+                <div
+                  key={m.id}
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: isMe ? 'flex-end' : 'flex-start'
+                  }}
+                >
+                  <span style={{ fontSize: '0.70rem', color: isMe ? '#ec4899' : '#8b5cf6', fontWeight: 700, marginBottom: '2px' }}>
+                    {m.senderName}
+                  </span>
+                  <div style={{
+                    padding: '6px 12px',
+                    borderRadius: isMe ? '12px 12px 2px 12px' : '12px 12px 12px 2px',
+                    background: isMe ? 'linear-gradient(135deg, #ec4899, #8b5cf6)' : 'rgba(255, 255, 255, 0.08)',
+                    color: '#ffffff',
+                    fontSize: '0.84rem',
+                    lineHeight: 1.35,
+                    maxWidth: '85%',
+                    wordBreak: 'break-word'
+                  }}>
+                    {m.text}
+                  </div>
+                </div>
+              );
+            })
+          )}
+          <div ref={chatScrollRef} />
+        </div>
+
+        {/* Input Form */}
         <form onSubmit={handleSendChat} style={{ display: 'flex', gap: '8px' }}>
           <input
             type="text"
             value={chatInput}
             onChange={(e) => setChatInput(e.target.value)}
-            placeholder="Type a quick whisper about this movie scene..."
+            placeholder="Whisper something to your partner while watching..."
             style={{
               flex: 1,
-              padding: '8px 14px',
-              borderRadius: '8px',
+              padding: '10px 14px',
+              borderRadius: '10px',
               background: 'rgba(0, 0, 0, 0.35)',
               border: '1px solid var(--border-subtle)',
               color: '#ffffff',
-              fontSize: '0.85rem'
+              fontSize: '0.88rem'
             }}
           />
           <button
             type="submit"
             className="btn-primary"
-            style={{ padding: '0 14px', borderRadius: '8px' }}
+            style={{ padding: '0 16px', borderRadius: '10px' }}
           >
-            <Send size={14} />
+            <Send size={15} />
           </button>
         </form>
       </div>
