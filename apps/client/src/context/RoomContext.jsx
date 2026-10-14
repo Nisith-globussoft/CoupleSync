@@ -140,7 +140,25 @@ export const RoomProvider = ({ children }) => {
 
     setSocket(s);
 
+    // Initial and periodic Keep-Alive heartbeat to server /health endpoint every 4 minutes
+    const pingServerHealth = () => {
+      try {
+        const healthUrl = socketUrl.replace(/\/$/, '') + '/health';
+        fetch(healthUrl, { method: 'GET' })
+          .then(res => res.json())
+          .then(data => console.log('[Keep-Alive] Server health:', data.status, '| Uptime:', data.uptime))
+          .catch(() => {});
+      } catch (e) {}
+    };
+
+    // Ping once on load
+    pingServerHealth();
+
+    // Ping every 4 minutes (prevents Render 15-min idle sleep)
+    const keepAliveInterval = setInterval(pingServerHealth, 4 * 60 * 1000);
+
     return () => {
+      clearInterval(keepAliveInterval);
       s.disconnect();
     };
   }, []);
