@@ -187,6 +187,18 @@ class RoomStore {
     return room.music;
   }
 
+  updateMusicState(code, updates) {
+    return this.updateMusic(code, updates);
+  }
+
+  changeTrack(code, trackIndex) {
+    return this.updateMusic(code, { currentTrackIndex: trackIndex, positionMs: 0, isPlaying: true });
+  }
+
+  getAllRooms() {
+    return Array.from(this.rooms.values());
+  }
+
   setActiveGame(code, gameType) {
     const room = this.getRoom(code);
     if (!room) return null;
