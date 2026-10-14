@@ -22,6 +22,7 @@ import {
   MessageCircle,
   AlertCircle,
   Volume2,
+  Radio,
   X
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
@@ -54,6 +55,7 @@ export const MovieRoom = () => {
   } = useRoom();
 
   const videoRef = useRef(null);
+  const remoteVoiceRef = useRef(null);
   const localStreamRef = useRef(null);
   const peerConnectionRef = useRef(null);
   const micStreamRef = useRef(null);
@@ -67,12 +69,15 @@ export const MovieRoom = () => {
   const [streamerName, setStreamerName] = useState(null);
   const [isDimmed, setIsDimmed] = useState(false);
   const [isMicOn, setIsMicOn] = useState(false);
+  const [partnerSpeaking, setPartnerSpeaking] = useState(false);
+  const [partnerSpeakerName, setPartnerSpeakerName] = useState(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [needsUserUnmute, setNeedsUserUnmute] = useState(false);
   const [chatInput, setChatInput] = useState('');
   const [floatingReactions, setFloatingReactions] = useState([]);
   const [sidePopMessage, setSidePopMessage] = useState(null);
 
+  // Deduplicate messages for rendering
   const rawMessages = room?.messages || [];
   const messages = [];
   const seenKeys = new Set();
@@ -154,10 +159,6 @@ export const MovieRoom = () => {
 
         if (type === 'offer') {
           console.log('[WebRTC] Processing incoming offer from', senderName);
-          setIsStreaming(true);
-          setIsLocalStreamer(false);
-          setStreamerName(senderName || 'Partner');
-
           if (!pc) {
             pc = createPeerConnection();
           }
@@ -178,8 +179,6 @@ export const MovieRoom = () => {
             type: 'answer',
             senderName: currentUser?.name
           });
-
-          showToast((senderName || 'Partner') + ' started streaming their movie! 🎬🍿');
         } else if (type === 'answer') {
           console.log('[WebRTC] Processing incoming answer');
           if (pc) {
@@ -207,7 +206,7 @@ export const MovieRoom = () => {
       setIsLocalStreamer(false);
       setMovieTitle(title || 'Shared Movie Stream');
       setStreamerName(streamerName || 'Partner');
-      showToast((streamerName || 'Partner') + ' is sharing: ' + (title || 'Movie') + ' 🎥');
+      showToast((streamerName || 'Partner') + ' started streaming: ' + (title || 'Movie') + ' 🎥');
     };
 
     const handleStreamStopped = () => {
@@ -216,20 +215,30 @@ export const MovieRoom = () => {
       showToast('Movie stream ended by partner.');
     };
 
+    const handleVoiceState = ({ isMicOn, speakerName }) => {
+      setPartnerSpeaking(isMicOn);
+      setPartnerSpeakerName(speakerName);
+      if (isMicOn) {
+        showToast((speakerName || 'Partner') + ' turned on Voice Mic! 🎙️🔊');
+      }
+    };
+
     const handleRequestActiveStream = async () => {
-      if (localStreamRef.current && peerConnectionRef.current) {
-        console.log('[MovieRoom] Re-offering active stream to joined partner');
+      if ((localStreamRef.current || micStreamRef.current) && peerConnectionRef.current) {
+        console.log('[MovieRoom] Re-offering active stream/voice to partner');
         try {
           const pc = peerConnectionRef.current;
           const offer = await pc.createOffer();
           await pc.setLocalDescription(offer);
 
-          socket.emit('movie:stream_started', {
-            roomCode: room?.code,
-            streamType: 'movie',
-            title: movieTitle,
-            streamerName: currentUser?.name
-          });
+          if (isStreaming) {
+            socket.emit('movie:stream_started', {
+              roomCode: room?.code,
+              streamType: 'movie',
+              title: movieTitle,
+              streamerName: currentUser?.name
+            });
+          }
 
           socket.emit('webrtc:signal', {
             roomCode: room?.code,
@@ -246,15 +255,17 @@ export const MovieRoom = () => {
     socket.on('webrtc:signal', handleSignal);
     socket.on('movie:stream_started', handleStreamStarted);
     socket.on('movie:stream_stopped', handleStreamStopped);
+    socket.on('movie:voice_state', handleVoiceState);
     socket.on('movie:request_active_stream', handleRequestActiveStream);
 
     return () => {
       socket.off('webrtc:signal', handleSignal);
       socket.off('movie:stream_started', handleStreamStarted);
       socket.off('movie:stream_stopped', handleStreamStopped);
+      socket.off('movie:voice_state', handleVoiceState);
       socket.off('movie:request_active_stream', handleRequestActiveStream);
     };
-  }, [socket, room?.code, currentUser?.name, movieTitle]);
+  }, [socket, room?.code, currentUser?.name, movieTitle, isStreaming]);
 
   const createPeerConnection = () => {
     console.log('[WebRTC] Creating new RTCPeerConnection');
@@ -273,8 +284,19 @@ export const MovieRoom = () => {
 
     pc.ontrack = (event) => {
       console.log('[WebRTC] Received remote track:', event.track.kind, event.streams);
-      if (event.streams && event.streams[0]) {
-        setActiveStream(event.streams[0]);
+      const stream = (event.streams && event.streams[0]) ? event.streams[0] : new MediaStream([event.track]);
+
+      if (event.track.kind === 'audio') {
+        console.log('[WebRTC] Attaching partner voice audio track to audio player');
+        if (remoteVoiceRef.current) {
+          remoteVoiceRef.current.srcObject = stream;
+          remoteVoiceRef.current.play().catch(e => console.warn('Audio play err:', e));
+        }
+        setPartnerSpeaking(true);
+      }
+
+      if (event.track.kind === 'video') {
+        setActiveStream(stream);
         setIsStreaming(true);
         setIsLocalStreamer(false);
       }
@@ -282,6 +304,78 @@ export const MovieRoom = () => {
 
     peerConnectionRef.current = pc;
     return pc;
+  };
+
+  // Toggle Mic (Voice Chat)
+  const toggleMic = async () => {
+    playClickSound();
+
+    if (isMicOn) {
+      // Mute local mic
+      if (micStreamRef.current) {
+        micStreamRef.current.getTracks().forEach(t => t.stop());
+        micStreamRef.current = null;
+      }
+      setIsMicOn(false);
+      showToast('Microphone Muted 🎙️');
+      if (socket && room?.code) {
+        socket.emit('movie:voice_state', {
+          roomCode: room.code,
+          isMicOn: false,
+          speakerName: currentUser?.name
+        });
+      }
+    } else {
+      // Unmute & transmit mic voice
+      try {
+        console.log('[MovieRoom] Requesting microphone access...');
+        const audioStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
+          }
+        });
+
+        micStreamRef.current = audioStream;
+        setIsMicOn(true);
+        playHeartSound();
+        showToast('Microphone LIVE — partner can hear you speaking! 🗣️🔊');
+
+        // Ensure peer connection exists
+        let pc = peerConnectionRef.current;
+        if (!pc) {
+          pc = createPeerConnection();
+        }
+
+        // Add mic audio track to peer connection
+        audioStream.getAudioTracks().forEach(track => {
+          pc.addTrack(track, audioStream);
+        });
+
+        // Trigger renegotiation offer so partner receives voice track
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+
+        if (socket && room?.code) {
+          socket.emit('webrtc:signal', {
+            roomCode: room.code,
+            signal: offer,
+            type: 'offer',
+            senderName: currentUser?.name
+          });
+
+          socket.emit('movie:voice_state', {
+            roomCode: room.code,
+            isMicOn: true,
+            speakerName: currentUser?.name
+          });
+        }
+      } catch (err) {
+        console.error('Microphone access denied:', err);
+        showToast('Microphone access denied or not available.');
+      }
+    }
   };
 
   // 1. Google Meet style screen & audio share
@@ -298,15 +392,19 @@ export const MovieRoom = () => {
         audio: true
       });
 
-      console.log('[MovieRoom] Screen stream captured! Audio tracks:', stream.getAudioTracks().length);
       localStreamRef.current = stream;
       setActiveStream(stream);
       setIsStreaming(true);
       setIsLocalStreamer(true);
       setStreamerName(currentUser?.name || 'You');
 
-      const pc = createPeerConnection();
+      const pc = peerConnectionRef.current || createPeerConnection();
       stream.getTracks().forEach(track => pc.addTrack(track, stream));
+
+      // Also include mic track if mic is on
+      if (micStreamRef.current) {
+        micStreamRef.current.getAudioTracks().forEach(t => pc.addTrack(t, micStreamRef.current));
+      }
 
       stream.getVideoTracks()[0].onended = () => {
         handleStopStream();
@@ -360,7 +458,6 @@ export const MovieRoom = () => {
       try {
         await video.play();
 
-        // Capture video & audio stream from HTML5 video element
         let capturedStream = null;
         if (typeof video.captureStream === 'function') {
           capturedStream = video.captureStream(30);
@@ -371,13 +468,16 @@ export const MovieRoom = () => {
         if (capturedStream) {
           console.log('[MovieRoom] Successfully captured stream from MP4 file!', capturedStream.getTracks());
           localStreamRef.current = capturedStream;
-          setActiveStream(null); // Keep video.src = fileUrl locally for smooth playback
           setIsStreaming(true);
           setIsLocalStreamer(true);
           setStreamerName(currentUser?.name || 'You');
 
-          const pc = createPeerConnection();
+          const pc = peerConnectionRef.current || createPeerConnection();
           capturedStream.getTracks().forEach(track => pc.addTrack(track, capturedStream));
+
+          if (micStreamRef.current) {
+            micStreamRef.current.getAudioTracks().forEach(t => pc.addTrack(t, micStreamRef.current));
+          }
 
           if (socket && room?.code) {
             socket.emit('movie:stream_started', {
@@ -401,11 +501,10 @@ export const MovieRoom = () => {
           showToast('Streaming "' + cleanName + '" to your partner via WebRTC! 🎬🍿');
           playSuccessFanfare();
         } else {
-          showToast('Playing locally. Click "Share Movie Screen" if your browser restricts captureStream.');
+          showToast('Playing locally. Click "Share Screen & Audio" if your browser restricts captureStream.');
         }
       } catch (err) {
         console.error('Error playing or streaming file:', err);
-        showToast('Loaded file. Press play on the video!');
       }
     };
   };
@@ -423,10 +522,6 @@ export const MovieRoom = () => {
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach(t => t.stop());
       localStreamRef.current = null;
-    }
-    if (peerConnectionRef.current) {
-      peerConnectionRef.current.close();
-      peerConnectionRef.current = null;
     }
     if (videoRef.current) {
       videoRef.current.srcObject = null;
@@ -446,34 +541,6 @@ export const MovieRoom = () => {
         setNeedsUserUnmute(false);
         showToast('Movie audio playing! 🔊🍿');
       }).catch(err => console.warn(err));
-    }
-  };
-
-  const toggleMic = async () => {
-    playClickSound();
-    if (isMicOn) {
-      if (micStreamRef.current) {
-        micStreamRef.current.getTracks().forEach(t => t.stop());
-        micStreamRef.current = null;
-      }
-      setIsMicOn(false);
-      showToast('Microphone Muted 🎙️');
-    } else {
-      try {
-        const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        micStreamRef.current = audioStream;
-        setIsMicOn(true);
-        showToast('Microphone Enabled — you can now talk with partner! 🗣️');
-        playHeartSound();
-
-        if (peerConnectionRef.current) {
-          audioStream.getAudioTracks().forEach(track => {
-            peerConnectionRef.current.addTrack(track, audioStream);
-          });
-        }
-      } catch (err) {
-        showToast('Could not access microphone.');
-      }
     }
   };
 
@@ -523,6 +590,9 @@ export const MovieRoom = () => {
       gap: '20px',
       position: 'relative'
     }}>
+      {/* Hidden dedicated audio element for partner's live voice mic */}
+      <audio ref={remoteVoiceRef} autoPlay playsInline style={{ display: 'none' }} />
+
       {/* Dim Lights Backdrop Overlay */}
       {isDimmed && (
         <div
@@ -565,16 +635,35 @@ export const MovieRoom = () => {
             <Tv size={20} color="#fff" />
           </div>
           <div>
-            <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#ffffff', fontFamily: 'var(--font-heading)' }}>
-              Couple Cinema & Movie Stream
-            </h3>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#ffffff', fontFamily: 'var(--font-heading)' }}>
+                Couple Cinema & Movie Stream
+              </h3>
+              {partnerSpeaking && (
+                <span style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  padding: '2px 8px',
+                  borderRadius: '999px',
+                  background: 'rgba(16, 185, 129, 0.2)',
+                  border: '1px solid rgba(16, 185, 129, 0.4)',
+                  fontSize: '0.72rem',
+                  color: '#10b981',
+                  fontWeight: 700
+                }}>
+                  <Radio size={12} style={{ animation: 'pulseGlow 1s infinite' }} />
+                  <span>{partnerSpeakerName || 'Partner'} Speaking 🔊</span>
+                </span>
+              )}
+            </div>
             <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
               {isStreaming ? (
                 <span style={{ color: '#10b981', fontWeight: 700 }}>
                   ● Live Streaming: {movieTitle} {streamerName ? '(' + streamerName + ')' : ''}
                 </span>
               ) : (
-                'Stream your movie or screen directly to your partner with full audio'
+                'Stream your movie or screen directly to your partner with full audio & voice talk'
               )}
             </p>
           </div>
@@ -600,20 +689,29 @@ export const MovieRoom = () => {
             <span>{isDimmed ? 'Lights On' : 'Dim Lights'}</span>
           </button>
 
+          {/* Voice Mic Button */}
           <button
             onClick={toggleMic}
-            className="btn-secondary"
-            title={isMicOn ? "Mute Microphone" : "Talk with Partner"}
             style={{
-              padding: '6px 12px',
-              fontSize: '0.8rem',
+              padding: '6px 14px',
+              fontSize: '0.82rem',
+              fontWeight: 700,
               borderRadius: '8px',
-              color: isMicOn ? '#10b981' : 'var(--text-muted)',
-              border: isMicOn ? '1px solid rgba(16, 185, 129, 0.4)' : '1px solid var(--border-subtle)'
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              background: isMicOn
+                ? 'linear-gradient(135deg, #10b981, #059669)'
+                : 'rgba(255, 255, 255, 0.08)',
+              border: isMicOn ? '1px solid #10b981' : '1px solid var(--border-subtle)',
+              color: '#ffffff',
+              boxShadow: isMicOn ? '0 0 16px rgba(16, 185, 129, 0.5)' : 'none',
+              transition: 'all 0.2s ease'
             }}
           >
-            {isMicOn ? <Mic size={15} /> : <MicOff size={15} />}
-            <span>{isMicOn ? 'Mic Live' : 'Talk (Mic)'}</span>
+            {isMicOn ? <Mic size={15} /> : <MicOff size={15} color="var(--text-muted)" />}
+            <span>{isMicOn ? '🎙️ Mic Live (Speaking)' : 'Talk (Mic Off)'}</span>
           </button>
         </div>
       </div>
@@ -841,7 +939,7 @@ export const MovieRoom = () => {
             }}>
               <AlertCircle size={16} color="#f59e0b" style={{ flexShrink: 0, marginTop: '2px' }} />
               <div>
-                <strong style={{ color: '#ffffff' }}>Tip:</strong> Choosing an MP4 streams the video and audio directly over WebRTC to your partner. You can also chat live below!
+                <strong style={{ color: '#ffffff' }}>Live Voice Call:</strong> Click <span style={{ color: '#10b981' }}>"Talk (Mic)"</span> at the top to talk with your partner with crystal-clear audio anytime!
               </div>
             </div>
           </div>

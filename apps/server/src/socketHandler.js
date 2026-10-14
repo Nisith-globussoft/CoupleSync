@@ -180,6 +180,12 @@ function setupSockets(io) {
       socket.to(code.toUpperCase()).emit('movie:stream_stopped');
     });
 
+    socket.on('movie:voice_state', (data) => {
+      const code = data?.roomCode || currentRoomCode;
+      if (!code) return;
+      socket.to(code.toUpperCase()).emit('movie:voice_state', data);
+    });
+
     socket.on('movie:request_active_stream', (data) => {
       const code = data?.roomCode || currentRoomCode;
       if (!code) return;
