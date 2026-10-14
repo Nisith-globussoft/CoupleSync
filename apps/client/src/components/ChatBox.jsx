@@ -1,9 +1,19 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useRoom } from '../context/RoomContext';
-import { Send, Heart, Smile, Sparkles } from 'lucide-react';
+import {
+  playMessagePop,
+  playHeartSound,
+  playKissSound,
+  playHugSound,
+  playClickSound
+} from '../utils/soundEffects';
+import { Send, Heart, Smile, Sparkles, MessageCircle, Flame } from 'lucide-react';
+import confetti from 'canvas-confetti';
+
+const QUICK_EMOJIS = ['❤️', '🥰', '😘', '🥺', '🌹', '💍', '🧸', '✨', '🔥', '🍷', '💋', '🍫'];
 
 export const ChatBox = () => {
-  const { room, currentUser, sendMessage, sendReaction, sendFloatingHeart } = useRoom();
+  const { room, currentUser, sendMessage, sendReaction, sendFloatingHeart, showToast } = useRoom();
   const [inputText, setInputText] = useState('');
   const messagesEndRef = useRef(null);
 
@@ -20,17 +30,45 @@ export const ChatBox = () => {
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!inputText.trim()) return;
-    sendMessage(inputText);
+    playMessagePop();
+    sendMessage(inputText.trim());
     setInputText('');
   };
 
-  const quickEmojis = ['❤️', '🔥', '🥰', '🎵', '🤣', '💖', '✨', '🥺'];
+  const handleSendEmoji = (emoji) => {
+    playClickSound();
+    sendReaction(emoji);
+  };
+
+  const handleLoveBurst = () => {
+    playHeartSound();
+    sendFloatingHeart();
+    confetti({
+      particleCount: 20,
+      spread: 60,
+      origin: { y: 0.7 }
+    });
+  };
+
+  const handleVirtualHug = () => {
+    playHugSound();
+    sendFloatingHeart();
+    showToast('Sent a warm, cozy virtual hug! 🫂💖');
+    sendMessage('🫂 *Sent you a big tight warm hug!*');
+  };
+
+  const handleVirtualKiss = () => {
+    playKissSound();
+    sendFloatingHeart();
+    showToast('Sent a sweet virtual kiss! 💋');
+    sendMessage('💋 *Sent you a sweet kiss on your forehead!*');
+  };
 
   return (
     <div className="glass-panel" style={{
       display: 'flex',
       flexDirection: 'column',
-      height: '520px',
+      height: '540px',
       overflow: 'hidden',
       border: '1px solid var(--border-glow)'
     }}>
@@ -41,7 +79,9 @@ export const ChatBox = () => {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        background: 'rgba(255, 255, 255, 0.02)'
+        background: 'rgba(255, 255, 255, 0.02)',
+        flexWrap: 'wrap',
+        gap: '8px'
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <div style={{
@@ -51,159 +91,182 @@ export const ChatBox = () => {
             background: '#10b981',
             boxShadow: '0 0 8px #10b981'
           }} />
-          <h3 style={{ fontSize: '0.95rem', fontWeight: 700, fontFamily: 'var(--font-heading)' }}>
-            Room Live Chat
+          <h3 style={{ fontSize: '0.95rem', fontWeight: 700, fontFamily: 'var(--font-heading)', color: '#ffffff' }}>
+            Couples Live Chat
           </h3>
         </div>
 
-        {/* Love Burst button */}
-        <button
-          onClick={sendFloatingHeart}
-          title="Send heart showers!"
-          style={{
-            background: 'linear-gradient(135deg, rgba(236, 72, 153, 0.2), rgba(139, 92, 246, 0.2))',
-            border: '1px solid var(--border-pink)',
-            borderRadius: '999px',
-            padding: '4px 10px',
-            fontSize: '0.75rem',
-            fontWeight: 700,
-            color: 'var(--accent-pink)',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '4px',
-            transition: 'all 0.2s ease'
-          }}
-        >
-          <Heart size={12} fill="#ec4899" />
-          <span>LOVE BURST</span>
-        </button>
+        {/* Action Buttons: Hug, Kiss, Love Burst */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <button
+            onClick={handleVirtualHug}
+            className="btn-secondary"
+            title="Send Virtual Hug"
+            style={{ padding: '5px 9px', fontSize: '0.78rem', borderRadius: '8px' }}
+          >
+            🫂 Hug
+          </button>
+
+          <button
+            onClick={handleVirtualKiss}
+            className="btn-secondary"
+            title="Send Virtual Kiss"
+            style={{ padding: '5px 9px', fontSize: '0.78rem', borderRadius: '8px' }}
+          >
+            💋 Kiss
+          </button>
+
+          <button
+            onClick={handleLoveBurst}
+            className="btn-primary"
+            style={{
+              padding: '5px 12px',
+              fontSize: '0.78rem',
+              borderRadius: '999px',
+              boxShadow: '0 0 16px rgba(236, 72, 153, 0.5)'
+            }}
+          >
+            <Heart size={13} fill="#fff" />
+            <span>Love Burst</span>
+          </button>
+        </div>
       </div>
 
-      {/* Message List */}
+      {/* Messages Scroll Area */}
       <div style={{
         flex: 1,
-        padding: '16px',
         overflowY: 'auto',
+        padding: '16px',
         display: 'flex',
         flexDirection: 'column',
         gap: '12px'
       }}>
-        {messages.map((msg) => {
-          if (msg.system) {
-            return (
-              <div
-                key={msg.id}
-                style={{
-                  alignSelf: 'center',
-                  background: 'rgba(255, 255, 255, 0.05)',
+        {messages.length === 0 ? (
+          <div style={{
+            margin: 'auto',
+            textAlign: 'center',
+            color: 'var(--text-dim)',
+            padding: '20px'
+          }}>
+            <Heart size={32} color="#ec4899" style={{ opacity: 0.6, marginBottom: '8px' }} />
+            <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>
+              No messages yet in this room.
+            </p>
+            <p style={{ fontSize: '0.8rem', marginTop: '4px' }}>
+              Say hi, send a hug, or launch a Love Burst! 💖
+            </p>
+          </div>
+        ) : (
+          messages.map((m) => {
+            const isMe = m.senderId === currentUser?.id;
+            const isSystem = m.system;
+
+            if (isSystem) {
+              return (
+                <div key={m.id} style={{
+                  textAlign: 'center',
+                  fontSize: '0.75rem',
+                  color: 'var(--accent-pink)',
+                  background: 'rgba(236, 72, 153, 0.1)',
                   padding: '4px 12px',
                   borderRadius: '999px',
-                  fontSize: '0.75rem',
-                  color: 'var(--text-dim)',
-                  fontWeight: 500,
-                  textAlign: 'center',
-                  maxWidth: '90%'
+                  alignSelf: 'center',
+                  maxWidth: '85%'
+                }}>
+                  {m.text}
+                </div>
+              );
+            }
+
+            return (
+              <div
+                key={m.id}
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: isMe ? 'flex-end' : 'flex-start',
+                  maxWidth: '82%',
+                  alignSelf: isMe ? 'flex-end' : 'flex-start'
                 }}
               >
-                {msg.text}
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  marginBottom: '3px'
+                }}>
+                  <span style={{
+                    fontSize: '0.74rem',
+                    fontWeight: 700,
+                    color: isMe ? '#ec4899' : '#8b5cf6'
+                  }}>
+                    {m.senderName || 'Anonymous'}
+                  </span>
+                  <span style={{ fontSize: '0.68rem', color: 'var(--text-dim)' }}>
+                    {m.timestamp ? new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                  </span>
+                </div>
+
+                <div style={{
+                  padding: '10px 14px',
+                  borderRadius: isMe ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
+                  background: isMe
+                    ? 'linear-gradient(135deg, #ec4899 0%, #8b5cf6 100%)'
+                    : 'rgba(255, 255, 255, 0.08)',
+                  border: isMe ? 'none' : '1px solid rgba(255, 255, 255, 0.1)',
+                  color: '#ffffff',
+                  fontSize: '0.9rem',
+                  lineHeight: 1.45,
+                  wordBreak: 'break-word',
+                  boxShadow: isMe ? '0 4px 15px rgba(236, 72, 153, 0.25)' : 'none'
+                }}>
+                  {m.text}
+                </div>
               </div>
             );
-          }
-
-          const isMe = currentUser && currentUser.id === msg.senderId;
-
-          return (
-            <div
-              key={msg.id}
-              style={{
-                alignSelf: isMe ? 'flex-end' : 'flex-start',
-                maxWidth: '78%',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: isMe ? 'flex-end' : 'flex-start'
-              }}
-            >
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                marginBottom: '2px',
-                fontSize: '0.72rem',
-                color: 'var(--text-dim)'
-              }}>
-                <span style={{ fontWeight: 600, color: msg.avatarColor || '#ec4899' }}>
-                  {msg.senderName}
-                </span>
-                <span>
-                  {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                </span>
-              </div>
-
-              <div style={{
-                padding: '10px 14px',
-                borderRadius: isMe ? '16px 16px 2px 16px' : '16px 16px 16px 2px',
-                background: isMe
-                  ? 'linear-gradient(135deg, #ec4899 0%, #8b5cf6 100%)'
-                  : 'rgba(255, 255, 255, 0.08)',
-                color: '#ffffff',
-                fontSize: '0.9rem',
-                lineHeight: 1.4,
-                wordBreak: 'break-word',
-                boxShadow: isMe ? '0 4px 15px rgba(236, 72, 153, 0.25)' : 'none',
-                border: isMe ? 'none' : '1px solid var(--border-subtle)'
-              }}>
-                {msg.text}
-              </div>
-            </div>
-          );
-        })}
+          })
+        )}
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Quick Emoji Reaction Bar */}
+      {/* Quick Emoji Bar */}
       <div style={{
         display: 'flex',
         alignItems: 'center',
         gap: '6px',
         padding: '8px 14px',
-        background: 'rgba(0, 0, 0, 0.2)',
         borderTop: '1px solid var(--border-subtle)',
-        overflowX: 'auto'
+        background: 'rgba(0, 0, 0, 0.25)',
+        overflowX: 'auto',
+        scrollbarWidth: 'none'
       }}>
-        <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)', fontWeight: 600, whiteSpace: 'nowrap' }}>
-          VIBE:
-        </span>
-        {quickEmojis.map((emoji) => (
+        {QUICK_EMOJIS.map((emoji) => (
           <button
             key={emoji}
-            onClick={() => sendReaction(emoji)}
+            onClick={() => handleSendEmoji(emoji)}
             style={{
-              background: 'none',
+              background: 'transparent',
               border: 'none',
-              fontSize: '1.1rem',
+              fontSize: '1.25rem',
               cursor: 'pointer',
               padding: '2px 4px',
               borderRadius: '6px',
               transition: 'transform 0.15s ease'
             }}
-            onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.3)'}
-            onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
           >
             {emoji}
           </button>
         ))}
       </div>
 
-      {/* Chat Input form */}
+      {/* Message Input Form */}
       <form
         onSubmit={handleSubmit}
         style={{
-          padding: '12px 14px',
           display: 'flex',
-          alignItems: 'center',
-          gap: '10px',
-          background: 'rgba(12, 9, 28, 0.95)',
+          gap: '8px',
+          padding: '12px 14px',
+          background: 'rgba(15, 11, 32, 0.7)',
           borderTop: '1px solid var(--border-subtle)'
         }}
       >
@@ -211,31 +274,34 @@ export const ChatBox = () => {
           type="text"
           value={inputText}
           onChange={(e) => setInputText(e.target.value)}
-          placeholder="Whisper sweet words or thoughts..."
-          maxLength={400}
+          placeholder="Whisper something sweet..."
           style={{
             flex: 1,
-            background: 'rgba(255, 255, 255, 0.06)',
-            border: '1px solid var(--border-subtle)',
-            borderRadius: '999px',
             padding: '10px 16px',
-            color: 'var(--text-main)',
+            borderRadius: '999px',
+            background: 'rgba(255, 255, 255, 0.05)',
+            border: '1px solid var(--border-subtle)',
+            color: '#ffffff',
             fontSize: '0.9rem',
-            outline: 'none',
-            fontFamily: 'var(--font-body)'
+            outline: 'none'
           }}
         />
+
         <button
           type="submit"
           className="btn-primary"
           style={{
-            width: '40px',
-            height: '40px',
+            width: '42px',
+            height: '42px',
             borderRadius: '50%',
-            padding: 0
+            padding: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0
           }}
         >
-          <Send size={16} />
+          <Send size={17} style={{ marginLeft: '2px' }} />
         </button>
       </form>
     </div>

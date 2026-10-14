@@ -1,9 +1,15 @@
 import React from 'react';
 import { useRoom } from '../../context/RoomContext';
-import { Sparkles, HelpCircle, Flame, ArrowRight, Dices } from 'lucide-react';
+import { playClickSound } from '../../utils/soundEffects';
+import { Sparkles, HelpCircle, Flame, ArrowRight, Dices, Eye } from 'lucide-react';
 
 export const GameSelector = () => {
   const { setActiveGame } = useRoom();
+
+  const handleSelectGame = (id) => {
+    playClickSound();
+    setActiveGame(id);
+  };
 
   const games = [
     {
@@ -12,7 +18,7 @@ export const GameSelector = () => {
       tagline: 'Deep secrets, romantic confessions & fun playful dares.',
       icon: Flame,
       color: '#ec4899',
-      badge: 'POPULAR',
+      badge: 'ROMANTIC',
       gradient: 'linear-gradient(135deg, rgba(236, 72, 153, 0.2) 0%, rgba(244, 63, 94, 0.1) 100%)'
     },
     {
@@ -32,6 +38,15 @@ export const GameSelector = () => {
       color: '#06b6d4',
       badge: 'LIVE VOTING',
       gradient: 'linear-gradient(135deg, rgba(6, 182, 212, 0.2) 0%, rgba(16, 185, 129, 0.1) 100%)'
+    },
+    {
+      id: 'never_have_i_ever',
+      title: 'Never Have I Ever: Couple Edition',
+      tagline: 'Confess cute habits, secret crushes, and romantic memories together.',
+      icon: Eye,
+      color: '#f59e0b',
+      badge: 'NEW & SPICY',
+      gradient: 'linear-gradient(135deg, rgba(245, 158, 11, 0.2) 0%, rgba(236, 72, 153, 0.1) 100%)'
     }
   ];
 
@@ -58,7 +73,7 @@ export const GameSelector = () => {
           return (
             <div
               key={g.id}
-              onClick={() => setActiveGame(g.id)}
+              onClick={() => handleSelectGame(g.id)}
               className="glass-card"
               style={{
                 padding: '20px',

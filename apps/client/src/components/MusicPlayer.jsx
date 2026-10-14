@@ -1,5 +1,6 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { useRoom } from '../context/RoomContext';
+import { playClickSound, playHeartSound } from '../utils/soundEffects';
 import {
   Play,
   Pause,
@@ -10,12 +11,56 @@ import {
   ListMusic,
   Disc3,
   Sparkles,
-  Heart
+  Heart,
+  Plus,
+  Radio,
+  Music2
 } from 'lucide-react';
 
+const FALLBACK_TRACKS = [
+  {
+    id: 'track-1',
+    title: 'Midnight Serenade',
+    artist: 'Lofi Cozy Moments',
+    album: 'Starlight Vibes Vol. 1',
+    duration: 372,
+    cover: 'https://images.unsplash.com/photo-1518495973542-4542c06a5843?w=500&auto=format&fit=crop&q=80',
+    audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3'
+  },
+  {
+    id: 'track-2',
+    title: 'Warm Coffee & You',
+    artist: 'Sunset Cafe Acoustics',
+    album: 'Together Tonight',
+    duration: 423,
+    cover: 'https://images.unsplash.com/photo-1501386761578-eac5c94b800a?w=500&auto=format&fit=crop&q=80',
+    audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3'
+  },
+  {
+    id: 'track-3',
+    title: 'Endless Horizon',
+    artist: 'Romantic Piano Dreams',
+    album: 'Under The Moon',
+    duration: 355,
+    cover: 'https://images.unsplash.com/photo-1516589178581-6cd7833ae3b2?w=500&auto=format&fit=crop&q=80',
+    audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3'
+  },
+  {
+    id: 'track-4',
+    title: 'Dancing in the Starlight',
+    artist: 'Lo-Fi Heartbeats',
+    album: 'CoupleSync Exclusive',
+    duration: 312,
+    cover: 'https://images.unsplash.com/photo-1518199266791-5375a83190b7?w=500&auto=format&fit=crop&q=80',
+    audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-8.mp3'
+  }
+];
+
 export const MusicPlayer = () => {
-  const { room, setMusicPlayback, changeTrack } = useRoom();
+  const { room, setMusicPlayback, changeTrack, showToast } = useRoom();
   const audioRef = useRef(null);
+  const canvasRef = useRef(null);
+  const animationFrameRef = useRef(null);
 
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -23,27 +68,33 @@ export const MusicPlayer = () => {
   const [isMuted, setIsMuted] = useState(false);
   const [showQueue, setShowQueue] = useState(false);
   const [isSeeking, setIsSeeking] = useState(false);
+  const [showCustomUrlModal, setShowCustomUrlModal] = useState(false);
+  const [customTitle, setCustomTitle] = useState('');
+  const [customUrl, setCustomUrl] = useState('');
 
   const musicState = room?.music;
-  const playlist = musicState?.playlist || [];
-  const currentTrackIndex = musicState?.currentTrackIndex ?? 0;
-  const currentTrack = playlist[currentTrackIndex] || null;
+  const rawPlaylist = musicState?.playlist && musicState.playlist.length > 0 ? musicState.playlist : FALLBACK_TRACKS;
+  // Ensure tracks have working audio urls
+  const playlist = rawPlaylist.map((t, idx) => ({
+    ...t,
+    audioUrl: t.audioUrl && t.audioUrl.startsWith('https://www.soundhelix') ? t.audioUrl : FALLBACK_TRACKS[idx % FALLBACK_TRACKS.length].audioUrl
+  }));
+
+  const currentTrackIndex = Math.min(musicState?.currentTrackIndex ?? 0, playlist.length - 1);
+  const currentTrack = playlist[currentTrackIndex] || playlist[0];
   const isPlaying = musicState?.isPlaying || false;
 
   // Sync audio tag with room music state
   useEffect(() => {
     if (!audioRef.current || !currentTrack) return;
-
     const audio = audioRef.current;
 
-    // Check if source changed
     if (audio.src !== currentTrack.audioUrl) {
       audio.src = currentTrack.audioUrl;
       audio.load();
     }
 
     if (isPlaying) {
-      // Calculate target position based on elapsed time since last sync
       const elapsedSinceSync = Math.max(0, (Date.now() - (musicState?.lastUpdated || Date.now())) / 1000);
       const targetPos = ((musicState?.positionMs || 0) / 1000) + elapsedSinceSync;
 
@@ -62,7 +113,54 @@ export const MusicPlayer = () => {
     }
   }, [isPlaying, currentTrackIndex, musicState?.lastUpdated]);
 
-  // Track playback time update
+  // Canvas visualizer animation
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    let phase = 0;
+
+    const render = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      const width = canvas.width;
+      const height = canvas.height;
+      const centerY = height / 2;
+
+      const bars = 32;
+      const barWidth = width / bars;
+
+      for (let i = 0; i < bars; i++) {
+        let barHeight = 4;
+        if (isPlaying) {
+          const wave = Math.sin(phase + i * 0.35) * Math.cos(phase * 0.8 + i * 0.2);
+          barHeight = Math.max(4, Math.abs(wave) * (height * 0.78) + 6);
+        }
+
+        const x = i * barWidth;
+        const y = centerY - barHeight / 2;
+
+        const grad = ctx.createLinearGradient(0, y, 0, y + barHeight);
+        grad.addColorStop(0, '#ec4899');
+        grad.addColorStop(0.5, '#a855f7');
+        grad.addColorStop(1, '#6366f1');
+
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.roundRect ? ctx.roundRect(x + 2, y, barWidth - 4, barHeight, 3) : ctx.rect(x + 2, y, barWidth - 4, barHeight);
+        ctx.fill();
+      }
+
+      phase += isPlaying ? 0.08 : 0.01;
+      animationFrameRef.current = requestAnimationFrame(render);
+    };
+
+    render();
+
+    return () => {
+      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+    };
+  }, [isPlaying]);
+
   const handleTimeUpdate = () => {
     if (audioRef.current && !isSeeking) {
       setCurrentTime(audioRef.current.currentTime);
@@ -70,8 +168,8 @@ export const MusicPlayer = () => {
     }
   };
 
-  // Toggle play/pause
   const togglePlayPause = () => {
+    playClickSound();
     if (!audioRef.current) return;
     const nextState = !isPlaying;
     const currentMs = Math.floor(audioRef.current.currentTime * 1000);
@@ -83,7 +181,6 @@ export const MusicPlayer = () => {
     });
   };
 
-  // Seek bar interactions
   const handleSeekChange = (e) => {
     setIsSeeking(true);
     setCurrentTime(parseFloat(e.target.value));
@@ -102,20 +199,20 @@ export const MusicPlayer = () => {
     });
   };
 
-  // Skip tracks
   const handleNext = () => {
+    playClickSound();
     if (playlist.length === 0) return;
     const nextIdx = (currentTrackIndex + 1) % playlist.length;
     changeTrack(nextIdx);
   };
 
   const handlePrev = () => {
+    playClickSound();
     if (playlist.length === 0) return;
     const prevIdx = (currentTrackIndex - 1 + playlist.length) % playlist.length;
     changeTrack(prevIdx);
   };
 
-  // Volume change
   const handleVolumeChange = (e) => {
     const val = parseFloat(e.target.value);
     setVolume(val);
@@ -126,14 +223,33 @@ export const MusicPlayer = () => {
   };
 
   const toggleMute = () => {
-    if (!audioRef.current) return;
-    if (isMuted) {
-      audioRef.current.muted = false;
-      setIsMuted(false);
-    } else {
-      audioRef.current.muted = true;
-      setIsMuted(true);
+    playClickSound();
+    if (audioRef.current) {
+      const nextMute = !isMuted;
+      setIsMuted(nextMute);
+      audioRef.current.muted = nextMute;
     }
+  };
+
+  const handleAddCustomTrack = (e) => {
+    e.preventDefault();
+    if (!customUrl.trim()) return;
+    const newTrack = {
+      id: 'custom-' + Date.now(),
+      title: customTitle.trim() || 'Shared Couple Stream',
+      artist: room?.name || 'CoupleSync Special',
+      album: 'Our Shared Songs',
+      duration: 240,
+      cover: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=500&auto=format&fit=crop&q=80',
+      audioUrl: customUrl.trim()
+    };
+    playlist.push(newTrack);
+    changeTrack(playlist.length - 1);
+    setMusicPlayback({ isPlaying: true, positionMs: 0, currentTrackIndex: playlist.length - 1 });
+    setShowCustomUrlModal(false);
+    setCustomTitle('');
+    setCustomUrl('');
+    showToast('Custom song added to couple queue! 🎵');
   };
 
   const formatTime = (secs) => {
@@ -143,180 +259,153 @@ export const MusicPlayer = () => {
     return m + ':' + (s < 10 ? '0' : '') + s;
   };
 
-  if (!currentTrack) {
-    return (
-      <div className="glass-panel" style={{ padding: '30px', textAlign: 'center' }}>
-        <p style={{ color: 'var(--text-muted)' }}>No music loaded.</p>
-      </div>
-    );
-  }
-
   return (
-    <div className="glass-panel" style={{
-      padding: '24px',
-      position: 'relative',
-      overflow: 'hidden',
-      border: '1px solid var(--border-glow)'
-    }}>
-      {/* Background ambient album blur */}
-      <div style={{
-        position: 'absolute',
-        top: '-40%',
-        left: '50%',
-        transform: 'translateX(-50%)',
-        width: '320px',
-        height: '320px',
-        background: `radial-gradient(circle, rgba(236, 72, 153, 0.25) 0%, rgba(99, 102, 241, 0.15) 50%, transparent 70%)`,
-        filter: 'blur(50px)',
-        pointerEvents: 'none',
-        zIndex: 0
-      }} />
-
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       {/* Hidden audio element */}
       <audio
         ref={audioRef}
         onTimeUpdate={handleTimeUpdate}
         onEnded={handleNext}
-        onLoadedMetadata={handleTimeUpdate}
+        preload="auto"
       />
 
-      <div style={{ position: 'relative', zIndex: 1 }}>
-        {/* Top bar with Room Playlist Badge */}
+      {/* Main Player Display */}
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        padding: '24px 16px',
+        borderRadius: '20px',
+        background: 'linear-gradient(180deg, rgba(236, 72, 153, 0.08) 0%, rgba(15, 11, 32, 0.6) 100%)',
+        border: '1px solid var(--border-glow)',
+        position: 'relative',
+        boxShadow: '0 8px 30px rgba(0, 0, 0, 0.4)'
+      }}>
+        {/* Sync Indicator Pill */}
         <div style={{
+          position: 'absolute',
+          top: '16px',
+          right: '16px',
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'space-between',
-          marginBottom: '20px'
+          gap: '6px',
+          padding: '4px 10px',
+          borderRadius: '999px',
+          background: isPlaying ? 'rgba(16, 185, 129, 0.15)' : 'rgba(255, 255, 255, 0.08)',
+          border: '1px solid ' + (isPlaying ? 'rgba(16, 185, 129, 0.3)' : 'rgba(255, 255, 255, 0.1)'),
+          fontSize: '0.72rem',
+          fontWeight: 700,
+          color: isPlaying ? '#10b981' : 'var(--text-dim)'
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{
-              fontSize: '0.75rem',
-              fontWeight: 700,
-              padding: '4px 10px',
-              borderRadius: '999px',
-              background: 'rgba(236, 72, 153, 0.15)',
-              color: 'var(--accent-pink)',
-              border: '1px solid var(--border-pink)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px'
-            }}>
-              <Sparkles size={12} />
-              SYNCED PLAYBACK
-            </span>
-            <span style={{ fontSize: '0.8rem', color: 'var(--text-dim)' }}>
-              Track {currentTrackIndex + 1} of {playlist.length}
-            </span>
-          </div>
-
-          <button
-            onClick={() => setShowQueue(!showQueue)}
-            style={{
-              background: showQueue ? 'rgba(236, 72, 153, 0.25)' : 'rgba(255, 255, 255, 0.06)',
-              border: '1px solid var(--border-subtle)',
-              borderRadius: '8px',
-              padding: '6px 10px',
-              color: showQueue ? 'var(--accent-pink)' : 'var(--text-main)',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              fontSize: '0.8rem',
-              fontWeight: 600,
-              transition: 'all 0.2s ease'
-            }}
-          >
-            <ListMusic size={16} />
-            <span>Queue</span>
-          </button>
+          <span style={{
+            width: '6px',
+            height: '6px',
+            borderRadius: '50%',
+            background: isPlaying ? '#10b981' : 'var(--text-dim)',
+            animation: isPlaying ? 'pulseGlow 1.5s infinite' : 'none'
+          }} />
+          <span>{isPlaying ? 'SYNCED PLAYING' : 'PAUSED'}</span>
         </div>
 
-        {/* Album Artwork & Vinyl effect */}
+        {/* Vinyl Album Cover Art */}
         <div style={{
+          position: 'relative',
+          width: '160px',
+          height: '160px',
+          margin: '12px 0 20px',
           display: 'flex',
-          justifyContent: 'center',
           alignItems: 'center',
-          margin: '10px 0 24px'
+          justifyContent: 'center'
         }}>
+          {/* Rotating Vinyl Grooves */}
           <div style={{
-            position: 'relative',
-            width: '210px',
-            height: '210px',
-            borderRadius: '24px',
-            overflow: 'hidden',
-            boxShadow: isPlaying ? '0 12px 40px rgba(236, 72, 153, 0.45)' : '0 8px 25px rgba(0, 0, 0, 0.4)',
-            transition: 'all 0.4s ease',
-            transform: isPlaying ? 'scale(1.02)' : 'scale(1)',
-            border: '2px solid rgba(255, 255, 255, 0.12)'
+            width: '100%',
+            height: '100%',
+            borderRadius: '50%',
+            background: 'radial-gradient(circle, #2a2040 0%, #0d0818 70%)',
+            border: '4px solid rgba(255, 255, 255, 0.1)',
+            boxShadow: isPlaying ? '0 0 35px rgba(236, 72, 153, 0.35)' : '0 8px 24px rgba(0,0,0,0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            animation: isPlaying ? 'spin 12s linear infinite' : 'none',
+            overflow: 'hidden'
           }}>
             <img
-              src={currentTrack.cover}
-              alt={currentTrack.title}
+              src={currentTrack?.cover}
+              alt={currentTrack?.title}
               style={{
-                width: '100%',
-                height: '100%',
-                objectFit: 'cover'
+                width: '110px',
+                height: '110px',
+                borderRadius: '50%',
+                objectFit: 'cover',
+                border: '3px solid rgba(255, 255, 255, 0.2)'
               }}
             />
-
-            {/* Glowing overlay when playing */}
-            {isPlaying && (
-              <div style={{
-                position: 'absolute',
-                bottom: '12px',
-                right: '12px',
-                background: 'rgba(10, 8, 24, 0.75)',
-                backdropFilter: 'blur(8px)',
-                padding: '6px 10px',
-                borderRadius: '999px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '4px'
-              }}>
-                <div className="equalizer-bar" />
-                <div className="equalizer-bar" />
-                <div className="equalizer-bar" />
-                <div className="equalizer-bar" />
-              </div>
-            )}
+            {/* Center vinyl hole */}
+            <div style={{
+              position: 'absolute',
+              width: '24px',
+              height: '24px',
+              borderRadius: '50%',
+              background: '#070510',
+              border: '2px solid rgba(255, 255, 255, 0.3)'
+            }} />
           </div>
         </div>
 
-        {/* Track Title and Artist */}
-        <div style={{ textAlign: 'center', marginBottom: '20px' }}>
-          <h2 style={{
-            fontSize: '1.45rem',
+        {/* Audio Visualizer Canvas */}
+        <div style={{ width: '100%', maxWidth: '360px', height: '36px', marginBottom: '14px' }}>
+          <canvas
+            ref={canvasRef}
+            width={360}
+            height={36}
+            style={{ width: '100%', height: '100%', display: 'block' }}
+          />
+        </div>
+
+        {/* Track Title & Artist */}
+        <div style={{ textAlign: 'center', marginBottom: '18px', width: '100%', padding: '0 20px' }}>
+          <h3 style={{
+            fontSize: '1.25rem',
             fontWeight: 800,
             fontFamily: 'var(--font-heading)',
-            letterSpacing: '-0.02em',
+            color: '#ffffff',
             marginBottom: '4px',
-            color: '#ffffff'
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis'
           }}>
-            {currentTrack.title}
-          </h2>
-          <p style={{ fontSize: '0.92rem', color: 'var(--text-muted)', fontWeight: 500 }}>
-            {currentTrack.artist} • <span style={{ color: 'var(--text-dim)' }}>{currentTrack.album}</span>
+            {currentTrack?.title || 'No Track Selected'}
+          </h3>
+          <p style={{
+            fontSize: '0.88rem',
+            color: 'var(--accent-pink)',
+            fontWeight: 600,
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis'
+          }}>
+            {currentTrack?.artist || 'CoupleSync Chill Radio'}
           </p>
         </div>
 
-        {/* Progress scrub bar */}
-        <div style={{ marginBottom: '20px' }}>
+        {/* Seek Bar & Timers */}
+        <div style={{ width: '100%', maxWidth: '420px', marginBottom: '20px' }}>
           <input
             type="range"
             min={0}
-            max={duration || currentTrack.duration || 100}
-            step={0.5}
+            max={duration || 100}
             value={currentTime}
             onChange={handleSeekChange}
             onMouseUp={handleSeekCommit}
             onTouchEnd={handleSeekCommit}
             style={{
               width: '100%',
-              accentColor: '#ec4899',
-              cursor: 'pointer',
-              height: '5px',
+              height: '6px',
               borderRadius: '999px',
-              background: 'rgba(255, 255, 255, 0.12)'
+              accentColor: '#ec4899',
+              cursor: 'pointer'
             }}
           />
           <div style={{
@@ -324,196 +413,285 @@ export const MusicPlayer = () => {
             justifyContent: 'space-between',
             fontSize: '0.75rem',
             color: 'var(--text-dim)',
-            marginTop: '6px',
-            fontWeight: 500
+            marginTop: '6px'
           }}>
             <span>{formatTime(currentTime)}</span>
-            <span>{formatTime(duration || currentTrack.duration)}</span>
+            <span>{formatTime(duration)}</span>
           </div>
         </div>
 
-        {/* Main playback control buttons */}
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: '24px',
-          marginBottom: '20px'
-        }}>
-          {/* Previous */}
+        {/* Playback Controls */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '18px', marginBottom: '16px' }}>
           <button
             onClick={handlePrev}
             style={{
-              background: 'none',
+              background: 'transparent',
               border: 'none',
               color: 'var(--text-muted)',
               cursor: 'pointer',
               padding: '8px',
+              borderRadius: '50%',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              transition: 'color 0.2s ease'
+              transition: 'all 0.2s'
             }}
-            onMouseOver={(e) => e.currentTarget.style.color = '#fff'}
-            onMouseOut={(e) => e.currentTarget.style.color = 'var(--text-muted)'}
           >
-            <SkipBack size={26} />
+            <SkipBack size={22} />
           </button>
 
-          {/* Big Play/Pause button */}
           <button
             onClick={togglePlayPause}
-            className="btn-primary"
             style={{
-              width: '64px',
-              height: '64px',
+              width: '56px',
+              height: '56px',
               borderRadius: '50%',
-              padding: 0,
-              fontSize: '1.5rem',
-              boxShadow: '0 8px 30px rgba(236, 72, 153, 0.5)'
+              background: 'linear-gradient(135deg, #ec4899 0%, #8b5cf6 100%)',
+              border: 'none',
+              color: '#ffffff',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: '0 0 25px rgba(236, 72, 153, 0.45)',
+              transition: 'transform 0.15s ease'
             }}
           >
-            {isPlaying ? <Pause size={28} fill="#fff" /> : <Play size={28} fill="#fff" style={{ marginLeft: '4px' }} />}
+            {isPlaying ? <Pause size={26} /> : <Play size={26} style={{ marginLeft: '3px' }} />}
           </button>
 
-          {/* Next */}
           <button
             onClick={handleNext}
             style={{
-              background: 'none',
+              background: 'transparent',
               border: 'none',
               color: 'var(--text-muted)',
               cursor: 'pointer',
               padding: '8px',
+              borderRadius: '50%',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              transition: 'color 0.2s ease'
+              transition: 'all 0.2s'
             }}
-            onMouseOver={(e) => e.currentTarget.style.color = '#fff'}
-            onMouseOut={(e) => e.currentTarget.style.color = 'var(--text-muted)'}
           >
-            <SkipForward size={26} />
+            <SkipForward size={22} />
           </button>
         </div>
 
-        {/* Volume controls */}
+        {/* Volume & Queue & Custom URL Action Bar */}
         <div style={{
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'center',
-          gap: '12px',
-          padding: '8px 16px',
-          background: 'rgba(255, 255, 255, 0.03)',
-          borderRadius: '999px',
-          width: 'fit-content',
-          margin: '0 auto'
+          justifyContent: 'space-between',
+          width: '100%',
+          maxWidth: '420px',
+          paddingTop: '12px',
+          borderTop: '1px solid rgba(255, 255, 255, 0.08)'
         }}>
-          <button
-            onClick={toggleMute}
-            style={{
-              background: 'none',
-              border: 'none',
-              color: 'var(--text-muted)',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center'
-            }}
-          >
-            {isMuted || volume === 0 ? <VolumeX size={16} /> : <Volume2 size={16} />}
-          </button>
-          <input
-            type="range"
-            min={0}
-            max={1}
-            step={0.01}
-            value={isMuted ? 0 : volume}
-            onChange={handleVolumeChange}
-            style={{
-              width: '80px',
-              accentColor: '#8b5cf6',
-              cursor: 'pointer',
-              height: '4px'
-            }}
-          />
-        </div>
-
-        {/* Shared Queue Drawer */}
-        {showQueue && (
-          <div style={{
-            marginTop: '20px',
-            paddingTop: '16px',
-            borderTop: '1px solid var(--border-subtle)'
-          }}>
-            <h4 style={{
-              fontSize: '0.85rem',
-              fontWeight: 700,
-              textTransform: 'uppercase',
-              letterSpacing: '0.05em',
-              color: 'var(--text-muted)',
-              marginBottom: '10px'
-            }}>
-              Shared Playlist Queue
-            </h4>
-            <div style={{
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '6px',
-              maxHeight: '180px',
-              overflowY: 'auto'
-            }}>
-              {playlist.map((track, idx) => {
-                const isSelected = idx === currentTrackIndex;
-                return (
-                  <div
-                    key={track.id}
-                    onClick={() => changeTrack(idx)}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      padding: '8px 12px',
-                      borderRadius: '8px',
-                      cursor: 'pointer',
-                      background: isSelected ? 'rgba(236, 72, 153, 0.15)' : 'rgba(255, 255, 255, 0.03)',
-                      border: isSelected ? '1px solid var(--border-pink)' : '1px solid transparent',
-                      transition: 'all 0.15s ease'
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <span style={{
-                        fontSize: '0.75rem',
-                        fontWeight: 600,
-                        color: isSelected ? 'var(--accent-pink)' : 'var(--text-dim)',
-                        width: '16px'
-                      }}>
-                        {idx + 1}
-                      </span>
-                      <div>
-                        <p style={{
-                          fontSize: '0.85rem',
-                          fontWeight: isSelected ? 700 : 500,
-                          color: isSelected ? '#fff' : 'var(--text-main)'
-                        }}>
-                          {track.title}
-                        </p>
-                        <p style={{ fontSize: '0.72rem', color: 'var(--text-dim)' }}>
-                          {track.artist}
-                        </p>
-                      </div>
-                    </div>
-                    {isSelected && (
-                      <span style={{ fontSize: '0.7rem', color: 'var(--accent-pink)', fontWeight: 600 }}>
-                        PLAYING
-                      </span>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+          {/* Volume slider */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <button
+              onClick={toggleMute}
+              style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
+            >
+              {isMuted || volume === 0 ? <VolumeX size={16} /> : <Volume2 size={16} />}
+            </button>
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.05}
+              value={isMuted ? 0 : volume}
+              onChange={handleVolumeChange}
+              style={{ width: '70px', height: '4px', accentColor: '#ec4899' }}
+            />
           </div>
-        )}
+
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button
+              onClick={() => {
+                playClickSound();
+                setShowCustomUrlModal(true);
+              }}
+              className="btn-secondary"
+              style={{ padding: '6px 10px', fontSize: '0.75rem', borderRadius: '8px' }}
+            >
+              <Plus size={13} />
+              <span>Add Song</span>
+            </button>
+
+            <button
+              onClick={() => {
+                playClickSound();
+                setShowQueue(prev => !prev);
+              }}
+              className="btn-secondary"
+              style={{ padding: '6px 10px', fontSize: '0.75rem', borderRadius: '8px' }}
+            >
+              <ListMusic size={13} />
+              <span>Queue ({playlist.length})</span>
+            </button>
+          </div>
+        </div>
       </div>
+
+      {/* Playlist Queue Drawer */}
+      {showQueue && (
+        <div className="glass-card" style={{ padding: '16px' }}>
+          <h4 style={{ fontSize: '0.92rem', fontWeight: 700, color: '#ffffff', marginBottom: '12px' }}>
+            Couple Shared Playlist
+          </h4>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {playlist.map((track, idx) => {
+              const isSelected = idx === currentTrackIndex;
+              return (
+                <div
+                  key={track.id}
+                  onClick={() => {
+                    playClickSound();
+                    changeTrack(idx);
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '12px',
+                    padding: '8px 12px',
+                    borderRadius: '10px',
+                    background: isSelected ? 'rgba(236, 72, 153, 0.15)' : 'rgba(255, 255, 255, 0.03)',
+                    border: '1px solid ' + (isSelected ? 'rgba(236, 72, 153, 0.35)' : 'transparent'),
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  <img
+                    src={track.cover}
+                    alt={track.title}
+                    style={{ width: '38px', height: '38px', borderRadius: '8px', objectFit: 'cover' }}
+                  />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{
+                      fontSize: '0.85rem',
+                      fontWeight: isSelected ? 700 : 500,
+                      color: isSelected ? '#ec4899' : '#ffffff',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis'
+                    }}>
+                      {track.title}
+                    </p>
+                    <p style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>
+                      {track.artist}
+                    </p>
+                  </div>
+                  {isSelected && (
+                    <span style={{ fontSize: '0.72rem', color: '#ec4899', fontWeight: 700 }}>
+                      NOW PLAYING
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Add Custom Audio Stream Modal */}
+      {showCustomUrlModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          width: '100vw',
+          height: '100vh',
+          background: 'rgba(0,0,0,0.7)',
+          backdropFilter: 'blur(8px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 99999,
+          padding: '16px'
+        }}>
+          <div className="glass-panel" style={{ maxWidth: '420px', width: '100%', padding: '24px' }}>
+            <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#ffffff', marginBottom: '8px' }}>
+              Add Song to Synchronized Queue 🎵
+            </h3>
+            <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '16px' }}>
+              Paste any direct MP3 audio URL or online radio stream link to play together with your partner!
+            </p>
+
+            <form onSubmit={handleAddCustomTrack} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div>
+                <label style={{ fontSize: '0.78rem', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
+                  Song Title
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Our Favorite Song"
+                  value={customTitle}
+                  onChange={(e) => setCustomTitle(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '10px 14px',
+                    borderRadius: '10px',
+                    background: 'rgba(0,0,0,0.3)',
+                    border: '1px solid var(--border-subtle)',
+                    color: '#ffffff',
+                    fontSize: '0.88rem'
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: '0.78rem', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
+                  Direct Audio URL (MP3 / Stream)
+                </label>
+                <input
+                  type="url"
+                  placeholder="https://example.com/audio.mp3"
+                  value={customUrl}
+                  onChange={(e) => setCustomUrl(e.target.value)}
+                  required
+                  style={{
+                    width: '100%',
+                    padding: '10px 14px',
+                    borderRadius: '10px',
+                    background: 'rgba(0,0,0,0.3)',
+                    border: '1px solid var(--border-subtle)',
+                    color: '#ffffff',
+                    fontSize: '0.88rem'
+                  }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px', marginTop: '12px' }}>
+                <button
+                  type="button"
+                  onClick={() => setShowCustomUrlModal(false)}
+                  className="btn-secondary"
+                  style={{ flex: 1 }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="btn-primary"
+                  style={{ flex: 1 }}
+                >
+                  Add & Play
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      <style>{`
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
     </div>
   );
 };
