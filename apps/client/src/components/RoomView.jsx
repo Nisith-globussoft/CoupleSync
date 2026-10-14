@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useRoom } from '../context/RoomContext';
-import { playClickSound, playHeartSound } from '../utils/soundEffects';
+import { playClickSound } from '../utils/soundEffects';
 import { MusicPlayer } from './MusicPlayer';
 import { MovieRoom } from './MovieRoom';
 import { ChatBox } from './ChatBox';
@@ -12,209 +12,139 @@ import { WouldYouRather } from './games/WouldYouRather';
 import { NeverHaveIEver } from './games/NeverHaveIEver';
 import {
   Music,
+  Tv,
   Gamepad2,
   MessageCircle,
-  Copy,
-  Check,
   Heart,
-  Share2,
   ArrowLeft,
-  Sparkles,
-  Award,
-  Tv
+  Users
 } from 'lucide-react';
-import confetti from 'canvas-confetti';
 
 export const RoomView = () => {
-  const { room, activeTab, setActiveTab, leaveRoom, setActiveGame, showToast } = useRoom();
-  const [copied, setCopied] = useState(false);
-
-  if (!room) return null;
-
-  const handleCopyCode = () => {
-    playClickSound();
-    navigator.clipboard.writeText(room.code);
-    setCopied(true);
-    showToast('Room Code copied: ' + room.code + ' 📋');
-    setTimeout(() => setCopied(false), 2200);
-  };
-
-  const handleShareInvite = () => {
-    playHeartSound();
-    const inviteUrl = window.location.origin + '?room=' + room.code;
-    navigator.clipboard.writeText(inviteUrl);
-    showToast('Invite link copied! Send it to your partner 💌');
-    confetti({
-      particleCount: 20,
-      spread: 60,
-      origin: { y: 0.3 }
-    });
-  };
-
-  const activeGame = room?.game?.activeGame;
+  const { room, activeGame, setActiveGame, leaveRoom } = useRoom();
+  const [activeTab, setActiveTab] = useState('movies'); // Default to movies for exciting watch-together
 
   const handleTabChange = (tab) => {
     playClickSound();
     setActiveTab(tab);
   };
 
+  if (!room) return null;
+
   return (
     <div style={{
-      maxWidth: '780px',
-      margin: '20px auto',
-      padding: '0 16px 40px'
+      width: '100%',
+      minHeight: 'calc(100vh - 65px)',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      padding: '12px 10px calc(80px + var(--sab)) 10px'
     }}>
-      {/* Main Glass Panel */}
-      <div className="glass-panel" style={{
-        padding: '24px 20px',
-        border: '1px solid var(--border-glow)',
-        background: 'rgba(18, 14, 38, 0.92)',
-        boxShadow: '0 12px 40px rgba(0, 0, 0, 0.5)'
-      }}>
-        {/* Room Header Card */}
+      <div style={{ width: '100%', maxWidth: '1050px' }}>
+        {/* Connected Couple Header Bar */}
         <div style={{
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          marginBottom: '20px',
-          flexWrap: 'wrap',
-          gap: '12px'
-        }}>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-              <div style={{
-                width: '32px',
-                height: '32px',
-                borderRadius: '10px',
-                background: 'linear-gradient(135deg, #ec4899, #8b5cf6)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                boxShadow: '0 0 15px rgba(236, 72, 153, 0.4)'
-              }}>
-                <Heart size={18} fill="#fff" color="#fff" />
-              </div>
-              <h2 style={{
-                fontSize: '1.4rem',
-                fontWeight: 800,
-                fontFamily: 'var(--font-heading)',
-                color: '#ffffff'
-              }}>
-                {room.name}
-              </h2>
-              <span style={{
-                fontSize: '0.72rem',
-                fontWeight: 700,
-                color: '#10b981',
-                background: 'rgba(16, 185, 129, 0.15)',
-                padding: '2px 8px',
-                borderRadius: '999px',
-                border: '1px solid rgba(16, 185, 129, 0.3)'
-              }}>
-                Active Sync
-              </span>
-            </div>
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-              Room Code: <span style={{ color: 'var(--accent-pink)', fontWeight: 800, letterSpacing: '0.05em' }}>{room.code}</span>
-            </p>
-          </div>
-
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button
-              onClick={handleShareInvite}
-              className="btn-secondary"
-              style={{
-                borderRadius: '999px',
-                padding: '6px 14px',
-                fontSize: '0.8rem',
-                fontWeight: 600
-              }}
-            >
-              <Share2 size={14} color="#ec4899" />
-              <span>Invite</span>
-            </button>
-
-            <button
-              onClick={handleCopyCode}
-              style={{
-                background: 'rgba(255, 255, 255, 0.08)',
-                border: '1px solid var(--border-subtle)',
-                borderRadius: '999px',
-                padding: '6px 14px',
-                color: '#ffffff',
-                fontSize: '0.8rem',
-                fontWeight: 600,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                transition: 'all 0.2s ease'
-              }}
-            >
-              {copied ? <Check size={14} color="#10b981" /> : <Copy size={14} />}
-              <span>{copied ? 'Copied!' : 'Copy Code'}</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Member Avatars Stack */}
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '12px',
-          padding: '12px 16px',
-          background: 'rgba(255, 255, 255, 0.03)',
+          marginBottom: '16px',
+          padding: '10px 14px',
           borderRadius: '14px',
-          marginBottom: '20px',
-          border: '1px solid var(--border-subtle)'
+          background: 'rgba(255, 255, 255, 0.03)',
+          border: '1px solid var(--border-subtle)',
+          flexWrap: 'wrap',
+          gap: '8px'
         }}>
-          <div style={{ display: 'flex', alignItems: 'center' }}>
-            {room.members.map((m, idx) => (
-              <div
-                key={m.id}
-                title={m.name}
-                style={{
-                  width: '36px',
-                  height: '36px',
-                  borderRadius: '50%',
-                  background: m.avatarColor || '#6366f1',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: '#fff',
-                  fontWeight: 800,
-                  fontSize: '0.9rem',
-                  marginLeft: idx > 0 ? '-10px' : 0,
-                  border: '2px solid #120e26',
-                  boxShadow: '0 2px 8px rgba(0, 0, 0, 0.4)'
-                }}
-              >
-                {m.avatarEmoji || m.name.charAt(0).toUpperCase()}
-              </div>
-            ))}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            {/* Overlapping Avatars */}
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              {room.members.map((m, idx) => (
+                <div
+                  key={m.id}
+                  style={{
+                    width: '32px',
+                    height: '32px',
+                    borderRadius: '50%',
+                    background: m.avatarColor || '#6366f1',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#fff',
+                    fontWeight: 800,
+                    fontSize: '0.88rem',
+                    marginLeft: idx > 0 ? '-10px' : 0,
+                    border: '2px solid #120e26',
+                    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.4)'
+                  }}
+                >
+                  {m.avatarEmoji || m.name.charAt(0).toUpperCase()}
+                </div>
+              ))}
+            </div>
+            <div>
+              <p style={{ fontSize: '0.85rem', fontWeight: 700, color: '#fff', lineHeight: 1.2 }}>
+                {room.name || 'Private Couple Room'}
+              </p>
+              <p style={{ fontSize: '0.72rem', color: 'var(--text-dim)' }}>
+                {room.members.map(m => m.name).join(' & ')} • {room.members.length} online
+              </p>
+            </div>
           </div>
-          <div>
-            <p style={{ fontSize: '0.88rem', fontWeight: 700, color: '#fff' }}>
-              Connected Couple ({room.members.length} online)
-            </p>
-            <p style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>
-              {room.members.map(m => m.name).join(' & ')}
-            </p>
+
+          <div style={{
+            fontSize: '0.72rem',
+            padding: '3px 8px',
+            borderRadius: '999px',
+            background: 'rgba(16, 185, 129, 0.15)',
+            border: '1px solid rgba(16, 185, 129, 0.35)',
+            color: '#10b981',
+            fontWeight: 700,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '4px'
+          }}>
+            <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#10b981' }} />
+            <span>SYNCED LIVE</span>
           </div>
         </div>
 
-        {/* Navigation Tabs (Music / Movies / Games / Chat / Love Wall) */}
-        <div style={{
+        {/* Desktop Navigation Tabs (Hidden on Mobile) */}
+        <div className="desktop-only-tabs" style={{
           display: 'flex',
           background: 'rgba(0, 0, 0, 0.35)',
           padding: '5px',
           borderRadius: '999px',
-          marginBottom: '24px',
+          marginBottom: '20px',
           border: '1px solid var(--border-subtle)',
           gap: '4px',
           overflowX: 'auto',
           scrollbarWidth: 'none'
         }}>
+          {/* Movie Stream Tab */}
+          <button
+            onClick={() => handleTabChange('movies')}
+            style={{
+              flex: 1,
+              background: activeTab === 'movies' ? 'linear-gradient(135deg, #f59e0b, #ec4899)' : 'none',
+              color: activeTab === 'movies' ? '#ffffff' : 'var(--text-muted)',
+              border: 'none',
+              borderRadius: '999px',
+              padding: '9px 12px',
+              fontSize: '0.84rem',
+              fontWeight: 700,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '6px',
+              transition: 'all 0.2s ease',
+              boxShadow: activeTab === 'movies' ? '0 4px 16px rgba(245, 158, 11, 0.45)' : 'none',
+              whiteSpace: 'nowrap'
+            }}
+          >
+            <Tv size={15} />
+            <span>Movie Stream</span>
+          </button>
+
           {/* Music Tab */}
           <button
             onClick={() => handleTabChange('music')}
@@ -239,32 +169,6 @@ export const RoomView = () => {
           >
             <Music size={15} />
             <span>Music</span>
-          </button>
-
-          {/* Movie Stream Tab (BRAND NEW!) */}
-          <button
-            onClick={() => handleTabChange('movies')}
-            style={{
-              flex: 1,
-              background: activeTab === 'movies' ? 'linear-gradient(135deg, #f59e0b, #ec4899)' : 'none',
-              color: activeTab === 'movies' ? '#ffffff' : 'var(--text-muted)',
-              border: 'none',
-              borderRadius: '999px',
-              padding: '9px 12px',
-              fontSize: '0.84rem',
-              fontWeight: 700,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '6px',
-              transition: 'all 0.2s ease',
-              boxShadow: activeTab === 'movies' ? '0 4px 16px rgba(245, 158, 11, 0.45)' : 'none',
-              whiteSpace: 'nowrap'
-            }}
-          >
-            <Tv size={15} />
-            <span>Movie Stream</span>
           </button>
 
           {/* Games Tab */}
@@ -347,9 +251,9 @@ export const RoomView = () => {
         </div>
 
         {/* Tab Content Display */}
-        {activeTab === 'music' && <MusicPlayer />}
-
         {activeTab === 'movies' && <MovieRoom />}
+
+        {activeTab === 'music' && <MusicPlayer />}
 
         {activeTab === 'games' && (
           <div>
@@ -388,8 +292,8 @@ export const RoomView = () => {
 
         {activeTab === 'love_wall' && <LoveWall />}
 
-        {/* Bottom Leave Button */}
-        <div style={{ marginTop: '28px', textAlign: 'center' }}>
+        {/* Bottom Leave Button (Desktop) */}
+        <div className="mobile-hide" style={{ marginTop: '28px', textAlign: 'center' }}>
           <button
             onClick={() => {
               playClickSound();
@@ -399,10 +303,10 @@ export const RoomView = () => {
               background: 'none',
               border: 'none',
               color: 'var(--text-dim)',
-              fontSize: '0.85rem',
+              fontSize: '0.82rem',
               fontWeight: 600,
               cursor: 'pointer',
-              padding: '8px 16px',
+              padding: '6px 14px',
               borderRadius: '8px',
               transition: 'color 0.2s ease'
             }}
@@ -413,6 +317,59 @@ export const RoomView = () => {
           </button>
         </div>
       </div>
+
+      {/* Native App-Style Mobile Bottom Navigation Dock */}
+      <nav className="mobile-bottom-dock">
+        <button
+          onClick={() => handleTabChange('movies')}
+          className={'mobile-dock-btn ' + (activeTab === 'movies' ? 'active' : '')}
+        >
+          <div className="dock-icon-wrapper">
+            <Tv size={18} />
+          </div>
+          <span>Movies</span>
+        </button>
+
+        <button
+          onClick={() => handleTabChange('music')}
+          className={'mobile-dock-btn ' + (activeTab === 'music' ? 'active' : '')}
+        >
+          <div className="dock-icon-wrapper">
+            <Music size={18} />
+          </div>
+          <span>Music</span>
+        </button>
+
+        <button
+          onClick={() => handleTabChange('games')}
+          className={'mobile-dock-btn ' + (activeTab === 'games' ? 'active' : '')}
+        >
+          <div className="dock-icon-wrapper">
+            <Gamepad2 size={18} />
+          </div>
+          <span>Games</span>
+        </button>
+
+        <button
+          onClick={() => handleTabChange('chat')}
+          className={'mobile-dock-btn ' + (activeTab === 'chat' ? 'active' : '')}
+        >
+          <div className="dock-icon-wrapper">
+            <MessageCircle size={18} />
+          </div>
+          <span>Chat</span>
+        </button>
+
+        <button
+          onClick={() => handleTabChange('love_wall')}
+          className={'mobile-dock-btn ' + (activeTab === 'love_wall' ? 'active' : '')}
+        >
+          <div className="dock-icon-wrapper">
+            <Heart size={18} fill={activeTab === 'love_wall' ? '#ec4899' : 'none'} />
+          </div>
+          <span>Love Wall</span>
+        </button>
+      </nav>
     </div>
   );
 };

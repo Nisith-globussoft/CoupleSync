@@ -77,7 +77,9 @@ export const ChatBox = () => {
     <div className="glass-panel" style={{
       display: 'flex',
       flexDirection: 'column',
-      height: '540px',
+      height: 'calc(100vh - 210px)',
+      minHeight: '400px',
+      maxHeight: '640px',
       overflow: 'hidden',
       border: '1px solid var(--border-glow)'
     }}>
@@ -100,7 +102,7 @@ export const ChatBox = () => {
             background: '#10b981',
             boxShadow: '0 0 8px #10b981'
           }} />
-          <h3 style={{ fontSize: '0.95rem', fontWeight: 700, fontFamily: 'var(--font-heading)', color: '#ffffff' }}>
+          <h3 style={{ fontSize: '16px', fontWeight: 700, fontFamily: 'var(--font-heading)', color: '#ffffff' }}>
             Couples Live Chat
           </h3>
         </div>

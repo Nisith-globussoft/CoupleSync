@@ -1,4 +1,9 @@
 :root {
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
+  --sar: env(safe-area-inset-right, 0px);
+
   --bg-primary: #070510;
   --bg-secondary: #0f0b20;
   --bg-surface: rgba(22, 17, 44, 0.7);
@@ -40,17 +45,35 @@
   -webkit-tap-highlight-color: transparent;
 }
 
+html, body {
+  width: 100%;
+  max-width: 100vw;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+
 body {
   background-color: var(--bg-primary);
   color: var(--text-main);
   font-family: var(--font-body);
   min-height: 100vh;
-  overflow-x: hidden;
+  min-height: -webkit-fill-available;
   background-image: 
     radial-gradient(circle at 15% 20%, rgba(99, 102, 241, 0.12) 0%, transparent 40%),
     radial-gradient(circle at 85% 75%, rgba(236, 72, 153, 0.12) 0%, transparent 45%),
     radial-gradient(circle at 50% 50%, rgba(139, 92, 246, 0.06) 0%, transparent 60%);
   background-attachment: fixed;
+}
+
+#root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Touch responsiveness */
+button, a, input, select, textarea {
+  touch-action: manipulation;
 }
 
 .glass-panel {
@@ -93,6 +116,7 @@ body {
   gap: 8px;
   box-shadow: 0 4px 20px rgba(236, 72, 153, 0.35);
   transition: all 0.25s ease;
+  user-select: none;
 }
 
 .btn-primary:hover {
@@ -119,6 +143,7 @@ body {
   justify-content: center;
   gap: 8px;
   transition: all 0.2s ease;
+  user-select: none;
 }
 
 .btn-secondary:hover {
@@ -134,8 +159,8 @@ body {
 
 /* Custom scrollbars */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
 }
 ::-webkit-scrollbar-track {
   background: rgba(0, 0, 0, 0.2);
@@ -182,4 +207,117 @@ body {
 
 .animate-pulse-glow {
   animation: pulseGlow 2.5s infinite ease-in-out;
+}
+
+@keyframes floatUp {
+  0% {
+    opacity: 0;
+    transform: translateY(10px) scale(0.7);
+  }
+  20% {
+    opacity: 1;
+    transform: translateY(-20px) scale(1.2);
+  }
+  80% {
+    opacity: 0.9;
+    transform: translateY(-80px) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-130px) scale(0.8);
+  }
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Mobile Bottom Navigation Dock (App-Style) */
+.mobile-bottom-dock {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  /* Prevent iOS Safari auto-zoom on input focus */
+  input, select, textarea {
+    font-size: 16px !important;
+  }
+
+  .mobile-hide {
+    display: none !important;
+  }
+
+  .mobile-show {
+    display: flex !important;
+  }
+
+  .desktop-only-tabs {
+    display: none !important;
+  }
+
+  /* Show floating bottom dock on mobile */
+  .mobile-bottom-dock {
+    display: flex;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 1000;
+    background: rgba(10, 8, 24, 0.94);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 6px 8px calc(8px + var(--sab)) 8px;
+    align-items: center;
+    justify-content: space-around;
+    box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.6);
+  }
+
+  .mobile-dock-btn {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 0.68rem;
+    font-weight: 600;
+    padding: 6px 2px;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    position: relative;
+    user-select: none;
+  }
+
+  .mobile-dock-btn.active {
+    color: #ffffff;
+    font-weight: 700;
+  }
+
+  .mobile-dock-btn.active .dock-icon-wrapper {
+    background: linear-gradient(135deg, rgba(236, 72, 153, 0.3), rgba(139, 92, 246, 0.3));
+    border: 1px solid rgba(236, 72, 153, 0.5);
+    color: #ec4899;
+    box-shadow: 0 0 14px rgba(236, 72, 153, 0.4);
+  }
+
+  .dock-icon-wrapper {
+    width: 32px;
+    height: 32px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+  }
+
+  .glass-panel {
+    border-radius: var(--radius-md);
+    padding: 16px 12px !important;
+  }
 }

@@ -166,7 +166,7 @@ export const LoveWall = () => {
                 background: 'rgba(0,0,0,0.4)',
                 border: '1px solid var(--border-subtle)',
                 color: '#fff',
-                fontSize: '0.88rem'
+                fontSize: '16px'
               }}
             />
             <button
@@ -348,7 +348,7 @@ export const LoveWall = () => {
         </form>
 
         {/* Notes Grid */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' }}>
           {notes.map((n) => (
             <div
               key={n.id}

@@ -39,9 +39,9 @@ const MOVIE_REACTIONS = [
   { emoji: '🍿', label: 'Popcorn' },
   { emoji: '💖', label: 'Love' },
   { emoji: '😂', label: 'Laugh' },
-  { emoji: '😱', label: 'Gasp' },
+  { emoji: '😮', label: 'Gasp' },
   { emoji: '😭', label: 'Crying' },
-  { emoji: '🍷', label: 'Cheers' }
+  { emoji: '🎉', label: 'Cheers' }
 ];
 
 export const MovieRoom = () => {
@@ -636,7 +636,7 @@ export const MovieRoom = () => {
           </div>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#ffffff', fontFamily: 'var(--font-heading)' }}>
+              <h3 style={{ fontSize: 'clamp(1rem, 3.5vw, 1.15rem)', fontWeight: 800, color: '#ffffff', fontFamily: 'var(--font-heading)' }}>
                 Couple Cinema & Movie Stream
               </h3>
               {partnerSpeaking && (
@@ -729,7 +729,9 @@ export const MovieRoom = () => {
             ? '0 0 60px rgba(245, 158, 11, 0.35), 0 0 100px rgba(236, 72, 153, 0.2)'
             : '0 12px 40px rgba(0, 0, 0, 0.6)',
           zIndex: 95,
-          minHeight: '380px',
+          minHeight: '210px',
+          aspectRatio: '16/9',
+          maxHeight: '55vh',
           display: 'flex',
           flexDirection: 'column',
           justifyContent: 'center',
@@ -1002,7 +1004,10 @@ export const MovieRoom = () => {
         borderRadius: '999px',
         background: 'rgba(18, 14, 38, 0.9)',
         border: '1px solid var(--border-glow)',
-        width: 'fit-content',
+        width: '100%',
+        maxWidth: '460px',
+        overflowX: 'auto',
+        scrollbarWidth: 'none',
         margin: '0 auto',
         boxShadow: '0 6px 25px rgba(0, 0, 0, 0.4)',
         position: 'relative',
