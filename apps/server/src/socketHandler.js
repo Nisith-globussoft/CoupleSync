@@ -84,11 +84,12 @@ function setupSockets(io) {
     });
 
     // --- CHAT & EMOTE REACTIONS ---
-    socket.on('chat:send_message', ({ roomCode, text, senderId, senderName, avatarColor }) => {
+    socket.on('chat:send_message', ({ id, roomCode, text, senderId, senderName, avatarColor }) => {
       if (!roomCode || !text) return;
-      const message = roomStore.addMessage(roomCode, { text, senderId, senderName, avatarColor });
+      const message = roomStore.addMessage(roomCode, { id, text, senderId, senderName, avatarColor });
       if (message) {
-        io.to(roomCode.toUpperCase()).emit('chat:new_message', message);
+        // Send only to partner, sender already has optimistic local state
+        socket.to(roomCode.toUpperCase()).emit('chat:new_message', message);
       }
     });
 

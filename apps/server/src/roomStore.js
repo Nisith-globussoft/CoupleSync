@@ -155,12 +155,12 @@ class RoomStore {
     return { room, departingUser };
   }
 
-  addMessage(code, { senderId, senderName, text, avatarColor }) {
+  addMessage(code, { id, senderId, senderName, text, avatarColor }) {
     const room = this.getRoom(code);
     if (!room) return null;
 
     const message = {
-      id: 'msg-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4),
+      id: id || ('msg-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4)),
       senderId,
       senderName,
       text: (text || '').trim(),

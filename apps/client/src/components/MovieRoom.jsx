@@ -73,7 +73,16 @@ export const MovieRoom = () => {
   const [floatingReactions, setFloatingReactions] = useState([]);
   const [sidePopMessage, setSidePopMessage] = useState(null);
 
-  const messages = room?.messages || [];
+  const rawMessages = room?.messages || [];
+  const messages = [];
+  const seenKeys = new Set();
+  for (const m of rawMessages) {
+    const key = m.id || (m.senderId + '_' + m.text + '_' + Math.floor((m.timestamp || 0) / 2500));
+    if (!seenKeys.has(key)) {
+      seenKeys.add(key);
+      messages.push(m);
+    }
+  }
 
   // Auto-scroll chat messages
   useEffect(() => {

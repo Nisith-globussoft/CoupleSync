@@ -81,7 +81,17 @@ export const RoomProvider = ({ children }) => {
     });
 
     s.on('room:sync_state', (updatedRoom) => {
-      setRoom(updatedRoom);
+      if (!updatedRoom) return;
+      const seen = new Set();
+      const dedupedMessages = [];
+      for (const m of (updatedRoom.messages || [])) {
+        const key = m.id || (m.senderId + '_' + m.text + '_' + Math.floor((m.timestamp || 0) / 2500));
+        if (!seen.has(key)) {
+          seen.add(key);
+          dedupedMessages.push(m);
+        }
+      }
+      setRoom({ ...updatedRoom, messages: dedupedMessages });
     });
 
     s.on('room:member_joined', ({ user, members, messages }) => {
@@ -96,8 +106,10 @@ export const RoomProvider = ({ children }) => {
     s.on('chat:new_message', (message) => {
       setRoom(prev => {
         if (!prev) return prev;
-        const exists = prev.messages.some(m => m.id === message.id);
-        if (exists) return prev;
+        const isDuplicate = prev.messages.some(
+          m => m.id === message.id || (m.senderId === message.senderId && m.text === message.text && Math.abs((m.timestamp || 0) - (message.timestamp || 0)) < 3000)
+        );
+        if (isDuplicate) return prev;
         return { ...prev, messages: [...prev.messages, message] };
       });
     });
@@ -327,7 +339,7 @@ export const RoomProvider = ({ children }) => {
   const sendMessage = (text) => {
     if (!room || !currentUser || !text.trim()) return;
     const msgObj = {
-      id: 'msg-' + Date.now(),
+      id: 'msg-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
       senderId: currentUser.id,
       senderName: currentUser.name,
       avatarColor: currentUser.avatarColor,
