@@ -81,11 +81,13 @@ export const RoomView = () => {
               ))}
             </div>
             <div>
-              <p style={{ fontSize: '0.85rem', fontWeight: 700, color: '#fff', lineHeight: 1.2 }}>
-                {room.name || 'Private Couple Room'}
+              <p style={{ fontSize: '0.88rem', fontWeight: 700, color: '#fff', lineHeight: 1.2 }}>
+                {room.name || 'Private Couple Room'} <span style={{ color: 'var(--accent-pink)', fontSize: '0.78rem' }}>({room.code})</span>
               </p>
-              <p style={{ fontSize: '0.72rem', color: 'var(--text-dim)' }}>
-                {room.members.map(m => m.name).join(' & ')} • {room.members.length} online
+              <p style={{ fontSize: '0.74rem', color: 'var(--text-dim)' }}>
+                {room.members.length === 1
+                  ? `${room.members[0].name} (Waiting for partner to join...)`
+                  : room.members.map(m => m.name).join(' & ')} • {room.members.length} {room.members.length === 1 ? 'member' : 'members'} online
               </p>
             </div>
           </div>

@@ -13,7 +13,7 @@ class RoomStore {
     return `${prefix}-${num}`;
   }
 
-  createRoom({ hostName, roomName, passcode }) {
+  createRoom({ hostName, roomName, passcode, avatarEmoji }) {
     let code = this.generateRoomCode();
     while (this.rooms.has(code)) {
       code = this.generateRoomCode();
@@ -23,6 +23,7 @@ class RoomStore {
     const hostUser = {
       id: hostId,
       name: hostName || 'Player 1',
+      avatarEmoji: avatarEmoji || '🐱',
       isHost: true,
       avatarColor: '#ec4899',
       joinedAt: Date.now()
@@ -80,7 +81,7 @@ class RoomStore {
     return this.rooms.get(code.toUpperCase()) || null;
   }
 
-  joinRoom({ code, userName, passcode }) {
+  joinRoom({ code, userName, passcode, avatarEmoji }) {
     const formattedCode = (code || '').toUpperCase().trim();
     const room = this.rooms.get(formattedCode);
 
@@ -99,6 +100,7 @@ class RoomStore {
     const newUser = {
       id: userId,
       name: userName || `Guest ${room.members.length + 1}`,
+      avatarEmoji: avatarEmoji || '🦊',
       isHost: false,
       avatarColor,
       joinedAt: Date.now()

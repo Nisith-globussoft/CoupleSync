@@ -10,9 +10,9 @@ function setupSockets(io) {
     console.log(`[Socket] Client connected: ${socket.id}`);
 
     // --- ROOM CREATION ---
-    socket.on('room:create', ({ hostName, roomName, passcode }, callback) => {
+    socket.on('room:create', ({ hostName, roomName, passcode, avatarEmoji }, callback) => {
       try {
-        const { room, user } = roomStore.createRoom({ hostName, roomName, passcode });
+        const { room, user } = roomStore.createRoom({ hostName, roomName, passcode, avatarEmoji });
         currentRoomCode = room.code;
         currentUserId = user.id;
 
@@ -29,9 +29,9 @@ function setupSockets(io) {
     });
 
     // --- ROOM JOIN ---
-    socket.on('room:join', ({ code, userName, passcode }, callback) => {
+    socket.on('room:join', ({ code, userName, passcode, avatarEmoji }, callback) => {
       try {
-        const result = roomStore.joinRoom({ code, userName, passcode });
+        const result = roomStore.joinRoom({ code, userName, passcode, avatarEmoji });
         if (result.error) {
           if (typeof callback === 'function') callback({ success: false, error: result.error });
           return;

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
 import { io } from 'socket.io-client';
 
 const RoomContext = createContext(null);
@@ -55,28 +55,34 @@ export const RoomProvider = ({ children }) => {
     const saved = localStorage.getItem('couplesync_user');
     return saved ? JSON.parse(saved) : null;
   });
-  const [activeTab, setActiveTab] = useState('music');
+  const [activeTab, setActiveTab] = useState('movies');
+  const [activeGame, setActiveGame] = useState(null);
   const [connected, setConnected] = useState(false);
   const [floatingHeartTrigger, setFloatingHeartTrigger] = useState(null);
   const [toastMessage, setToastMessage] = useState(null);
-  const [isDemoMode, setIsDemoMode] = useState(false);
+
+  // Default to real Render backend URL when not on localhost
+  const DEFAULT_PROD_SERVER = 'https://couplesync-api.onrender.com';
+  const socketUrl = import.meta.env.VITE_SERVER_URL ||
+    (typeof window !== 'undefined' && window.location.hostname === 'localhost' ? 'http://localhost:5000' : DEFAULT_PROD_SERVER);
 
   useEffect(() => {
-    const socketUrl = import.meta.env.VITE_SERVER_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : window.location.origin);
+    console.log('[RoomContext] Connecting to backend server:', socketUrl);
     const s = io(socketUrl, {
       transports: ['websocket', 'polling'],
-      reconnectionAttempts: 5,
-      reconnectionDelay: 2000,
-      timeout: 5000
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      timeout: 20000
     });
 
     s.on('connect', () => {
-      console.log('[Socket] Connected to server:', s.id);
+      console.log('[Socket] Connected to real backend:', s.id);
       setConnected(true);
     });
 
     s.on('disconnect', () => {
-      console.log('[Socket] Disconnected from server');
+      console.log('[Socket] Disconnected from backend');
       setConnected(false);
     });
 
@@ -95,7 +101,7 @@ export const RoomProvider = ({ children }) => {
     });
 
     s.on('room:member_joined', ({ user, members, messages }) => {
-      showToast((user.name || 'Someone') + ' joined the room! 💖');
+      showToast((user.name || 'Your partner') + ' joined the room! ❤️');
       setRoom(prev => prev ? { ...prev, members, messages } : prev);
     });
 
@@ -146,15 +152,12 @@ export const RoomProvider = ({ children }) => {
         const healthUrl = socketUrl.replace(/\/$/, '') + '/health';
         fetch(healthUrl, { method: 'GET' })
           .then(res => res.json())
-          .then(data => console.log('[Keep-Alive] Server health:', data.status, '| Uptime:', data.uptime))
+          .then(data => console.log('[Keep-Alive] Server health:', data.status))
           .catch(() => {});
       } catch (e) {}
     };
 
-    // Ping once on load
     pingServerHealth();
-
-    // Ping every 4 minutes (prevents Render 15-min idle sleep)
     const keepAliveInterval = setInterval(pingServerHealth, 4 * 60 * 1000);
 
     return () => {
@@ -172,315 +175,187 @@ export const RoomProvider = ({ children }) => {
     setFloatingHeartTrigger({ id: Date.now(), senderName });
   };
 
-  // Helper to create client-side room (Instant Demo or Fallback)
-  const initializeClientRoom = ({ hostName, roomName, avatarEmoji = '🐱' }) => {
-    const user = {
-      id: 'user-' + Math.random().toString(36).substring(2, 9),
-      name: hostName || 'You',
-      avatarColor: 'linear-gradient(135deg, #ec4899, #8b5cf6)',
-      avatarEmoji: avatarEmoji || '💖',
-      isHost: true
-    };
-    const partner = {
-      id: 'partner-demo',
-      name: 'Sweetheart 💖',
-      avatarColor: 'linear-gradient(135deg, #f43f5e, #ec4899)',
-      avatarEmoji: '🦊',
-      isHost: false
-    };
-
-    const newRoom = {
-      code: 'LOVE-' + Math.floor(1000 + Math.random() * 9000),
-      name: roomName || 'Cozy Date Night',
-      hostId: user.id,
-      members: [user, partner],
-      messages: [
-        {
-          id: 'welcome-1',
-          text: 'Welcome to your private CoupleSync sanctuary! 💖',
-          system: true
-        },
-        {
-          id: 'welcome-2',
-          senderId: partner.id,
-          senderName: partner.name,
-          text: 'Hey sweetheart! I am so glad we are hanging out together tonight! 🥰',
-          timestamp: Date.now() - 30000
-        }
-      ],
-      music: {
-        isPlaying: true,
-        currentTrackIndex: 0,
-        positionMs: 0,
-        lastUpdated: Date.now(),
-        playlist: DEFAULT_PLAYLIST
-      },
-      game: {
-        activeGame: null,
-        truthOrDare: null,
-        quiz: {
-          currentQuestionIndex: 0,
-          answers: {}
-        },
-        wouldYouRather: {
-          currentDilemmaIndex: 0,
-          votes: {}
-        }
-      }
-    };
-
-    setRoom(newRoom);
-    setCurrentUser(user);
-    setIsDemoMode(true);
-    localStorage.setItem('couplesync_user', JSON.stringify(user));
-    showToast('Room ' + newRoom.code + ' ready! Enjoy your date 💖');
-    return newRoom;
-  };
-
+  // Real Room Creation over WebSockets (Zero bots!)
   const createRoom = ({ hostName, roomName, passcode, avatarEmoji = '🐱' }) => {
-    return new Promise((resolve) => {
-      if (socket && connected) {
-        let didRespond = false;
-        const timer = setTimeout(() => {
-          if (!didRespond) {
-            console.log('[RoomContext] Socket timeout, falling back to local room');
-            const fallbackRoom = initializeClientRoom({ hostName, roomName, avatarEmoji });
-            resolve({ success: true, room: fallbackRoom });
-          }
-        }, 3500);
+    return new Promise((resolve, reject) => {
+      if (!socket) {
+        return reject(new Error('Connecting to server... Please wait a few seconds and try again.'));
+      }
 
-        socket.emit('room:create', { hostName, roomName, passcode }, (res) => {
-          didRespond = true;
-          clearTimeout(timer);
+      const sendCreate = () => {
+        socket.emit('room:create', { hostName, roomName, passcode, avatarEmoji }, (res) => {
           if (res && res.success) {
             setRoom(res.room);
             const userWithAvatar = { ...res.user, avatarEmoji };
             setCurrentUser(userWithAvatar);
             localStorage.setItem('couplesync_user', JSON.stringify(userWithAvatar));
-            showToast('Room ' + res.room.code + ' created! Invite your partner 💌');
-            setIsDemoMode(false);
+            showToast('Room ' + res.room.code + ' created! Share code with your partner 💌');
             resolve(res);
           } else {
-            const fallbackRoom = initializeClientRoom({ hostName, roomName, avatarEmoji });
-            resolve({ success: true, room: fallbackRoom });
+            reject(new Error(res?.error || 'Failed to create room. Please try again.'));
           }
         });
+      };
+
+      if (socket.connected) {
+        sendCreate();
       } else {
-        // Instant local room setup
-        const fallbackRoom = initializeClientRoom({ hostName, roomName, avatarEmoji });
-        resolve({ success: true, room: fallbackRoom });
+        // Wait up to 10 seconds for socket connection (handles Render waking up)
+        showToast('Connecting to real-time server... ⏳');
+        const timeout = setTimeout(() => {
+          reject(new Error('Server is currently waking up. Please click Create again in 10 seconds!'));
+        }, 12000);
+
+        socket.once('connect', () => {
+          clearTimeout(timeout);
+          sendCreate();
+        });
       }
     });
   };
 
+  // Real Room Joining over WebSockets (Zero bots!)
   const joinRoom = ({ code, userName, passcode, avatarEmoji = '🦊' }) => {
     return new Promise((resolve, reject) => {
-      if (socket && connected) {
-        let didRespond = false;
-        const timer = setTimeout(() => {
-          if (!didRespond) {
-            const fallbackRoom = initializeClientRoom({ hostName: userName, roomName: 'Room ' + code, avatarEmoji });
-            resolve({ success: true, room: fallbackRoom });
-          }
-        }, 3500);
+      if (!socket) {
+        return reject(new Error('Connecting to server... Please wait a few seconds and try again.'));
+      }
 
-        socket.emit('room:join', { code, userName, passcode }, (res) => {
-          didRespond = true;
-          clearTimeout(timer);
+      const sendJoin = () => {
+        socket.emit('room:join', { code, userName, passcode, avatarEmoji }, (res) => {
           if (res && res.success) {
             setRoom(res.room);
             const userWithAvatar = { ...res.user, avatarEmoji };
             setCurrentUser(userWithAvatar);
             localStorage.setItem('couplesync_user', JSON.stringify(userWithAvatar));
             showToast('Joined room ' + code + ' successfully! 🎉');
-            setIsDemoMode(false);
             resolve(res);
           } else {
-            const fallbackRoom = initializeClientRoom({ hostName: userName, roomName: 'Room ' + code, avatarEmoji });
-            resolve({ success: true, room: fallbackRoom });
+            reject(new Error(res?.error || 'Room not found. Please check your code.'));
           }
         });
+      };
+
+      if (socket.connected) {
+        sendJoin();
       } else {
-        const fallbackRoom = initializeClientRoom({ hostName: userName, roomName: 'Room ' + code, avatarEmoji });
-        resolve({ success: true, room: fallbackRoom });
+        showToast('Connecting to real-time server... ⏳');
+        const timeout = setTimeout(() => {
+          reject(new Error('Server is currently waking up. Please click Join again in 10 seconds!'));
+        }, 12000);
+
+        socket.once('connect', () => {
+          clearTimeout(timeout);
+          sendJoin();
+        });
       }
     });
   };
 
   const leaveRoom = () => {
-    if (socket && connected && room && currentUser) {
+    if (socket && room && currentUser) {
       socket.emit('room:leave', { roomCode: room.code, userId: currentUser.id });
     }
     setRoom(null);
-    setIsDemoMode(false);
   };
 
   const setMusicPlayback = ({ isPlaying, positionMs, currentTrackIndex }) => {
-    if (socket && connected && room) {
-      socket.emit('music:state_change', {
-        roomCode: room.code,
-        isPlaying,
-        positionMs,
-        currentTrackIndex
-      });
-    }
-    setRoom(prev => prev ? {
-      ...prev,
-      music: {
-        ...prev.music,
-        isPlaying,
-        positionMs,
-        currentTrackIndex,
-        lastUpdated: Date.now()
-      }
-    } : prev);
+    if (!socket || !room) return;
+    socket.emit('music:state_change', {
+      roomCode: room.code,
+      isPlaying,
+      positionMs,
+      currentTrackIndex
+    });
   };
 
   const changeTrack = (trackIndex) => {
-    if (socket && connected && room) {
-      socket.emit('music:track_change', {
-        roomCode: room.code,
-        trackIndex
-      });
-    }
-    setRoom(prev => prev ? {
-      ...prev,
-      music: {
-        ...prev.music,
-        currentTrackIndex: trackIndex,
-        positionMs: 0,
-        lastUpdated: Date.now()
-      }
-    } : prev);
+    if (!socket || !room) return;
+    socket.emit('music:track_change', {
+      roomCode: room.code,
+      trackIndex
+    });
   };
 
   const sendMessage = (text) => {
-    if (!room || !currentUser || !text.trim()) return;
+    if (!socket || !room || !currentUser || !text.trim()) return;
+
     const msgObj = {
       id: 'msg-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+      text: text.trim(),
       senderId: currentUser.id,
       senderName: currentUser.name,
       avatarColor: currentUser.avatarColor,
-      text: text.trim(),
+      avatarEmoji: currentUser.avatarEmoji,
       timestamp: Date.now()
     };
 
-    if (socket && connected) {
-      socket.emit('chat:send_message', {
-        roomCode: room.code,
-        ...msgObj
-      });
-    }
-
+    // Add locally for instant response
     setRoom(prev => prev ? {
       ...prev,
       messages: [...prev.messages, msgObj]
     } : prev);
 
-    // If in demo mode, partner sends a sweet reply after 1.4s!
-    if (isDemoMode) {
-      setTimeout(() => {
-        const partnerReplies = [
-          'Aww you are the sweetest! 💖',
-          'I love this song so much! 🎶',
-          'Can not wait for our next date in person! 🥰',
-          'Sending you a million kisses right now! 💋',
-          'You always know how to make me smile! ✨'
-        ];
-        const replyText = partnerReplies[Math.floor(Math.random() * partnerReplies.length)];
-        const partnerMsg = {
-          id: 'partner-msg-' + Date.now(),
-          senderId: 'partner-demo',
-          senderName: 'Sweetheart 💖',
-          text: replyText,
-          timestamp: Date.now()
-        };
-        setRoom(p => p ? { ...p, messages: [...p.messages, partnerMsg] } : p);
-      }, 1400);
-    }
+    socket.emit('chat:send_message', {
+      roomCode: room.code,
+      ...msgObj
+    });
   };
 
   const sendReaction = (emoji) => {
-    if (!room || !currentUser) return;
-    if (socket && connected) {
-      socket.emit('chat:quick_reaction', {
-        roomCode: room.code,
-        emoji,
-        senderName: currentUser.name
-      });
-    }
-    showToast('You reacted ' + emoji);
-    triggerFloatingHearts(currentUser.name);
+    if (!socket || !room || !currentUser) return;
+    socket.emit('chat:quick_reaction', {
+      roomCode: room.code,
+      emoji,
+      senderName: currentUser.name
+    });
   };
 
   const sendFloatingHeart = () => {
-    if (!room || !currentUser) return;
-    if (socket && connected) {
-      socket.emit('chat:floating_heart', {
-        roomCode: room.code,
-        senderName: currentUser.name
-      });
-    }
-    triggerFloatingHearts(currentUser.name);
-  };
-
-  const setActiveGame = (gameType) => {
-    if (socket && connected && room) {
-      socket.emit('game:set_active', {
-        roomCode: room.code,
-        gameType
-      });
-    }
-    setRoom(prev => prev ? {
-      ...prev,
-      game: {
-        ...(prev.game || {}),
-        activeGame: gameType
-      }
-    } : prev);
+    if (!socket || !room || !currentUser) return;
+    socket.emit('chat:floating_heart', {
+      roomCode: room.code,
+      senderName: currentUser.name
+    });
+    setFloatingHeartTrigger({ id: Date.now(), senderName: currentUser.name });
   };
 
   const spinTruthOrDare = (category, type) => {
-    if (socket && connected && room) {
-      socket.emit('game:truth_or_dare_spin', {
-        roomCode: room.code,
-        category,
-        type
-      });
-    }
+    if (!socket || !room) return;
+    socket.emit('game:truth_or_dare_spin', {
+      roomCode: room.code,
+      category,
+      type
+    });
   };
 
   const submitQuizAnswer = (questionIndex, selectedIndex) => {
-    if (socket && connected && room && currentUser) {
-      socket.emit('game:quiz_answer', {
-        roomCode: room.code,
-        userId: currentUser.id,
-        questionIndex,
-        selectedIndex
-      });
-    }
+    if (!socket || !room || !currentUser) return;
+    socket.emit('game:quiz_answer', {
+      roomCode: room.code,
+      userId: currentUser.id,
+      questionIndex,
+      selectedIndex
+    });
   };
 
   const nextQuizQuestion = () => {
-    if (socket && connected && room) {
-      socket.emit('game:quiz_next', { roomCode: room.code });
-    }
+    if (!socket || !room) return;
+    socket.emit('game:quiz_next', { roomCode: room.code });
   };
 
   const voteWouldYouRather = (choice) => {
-    if (socket && connected && room && currentUser) {
-      socket.emit('game:wyr_vote', {
-        roomCode: room.code,
-        userId: currentUser.id,
-        choice
-      });
-    }
+    if (!socket || !room || !currentUser) return;
+    socket.emit('game:wyr_vote', {
+      roomCode: room.code,
+      userId: currentUser.id,
+      choice
+    });
   };
 
   const nextWouldYouRather = () => {
-    if (socket && connected && room) {
-      socket.emit('game:wyr_next', { roomCode: room.code });
-    }
+    if (!socket || !room) return;
+    socket.emit('game:wyr_next', { roomCode: room.code });
   };
 
   return (
@@ -488,28 +363,27 @@ export const RoomProvider = ({ children }) => {
       value={{
         room,
         currentUser,
-        socket,
         activeTab,
         setActiveTab,
+        activeGame,
+        setActiveGame,
         connected,
-        isDemoMode,
+        socket,
         createRoom,
         joinRoom,
         leaveRoom,
-        initializeClientRoom,
         setMusicPlayback,
         changeTrack,
         sendMessage,
         sendReaction,
         sendFloatingHeart,
-        triggerFloatingHearts,
-        setActiveGame,
         spinTruthOrDare,
         submitQuizAnswer,
         nextQuizQuestion,
         voteWouldYouRather,
         nextWouldYouRather,
         floatingHeartTrigger,
+        triggerFloatingHearts,
         toastMessage,
         showToast
       }}

@@ -39,7 +39,7 @@ const VIBES = [
 ];
 
 export const RoomLobby = () => {
-  const { createRoom, joinRoom, currentUser, initializeClientRoom, connected } = useRoom();
+  const { createRoom, joinRoom, currentUser, connected } = useRoom();
 
   const [mode, setMode] = useState('create'); // 'create' | 'join'
   const [userName, setUserName] = useState(currentUser?.name || '');
@@ -84,14 +84,8 @@ export const RoomLobby = () => {
         origin: { y: 0.6 }
       });
     } catch (err) {
-      console.warn('Socket create room failed, falling back to instant client room mode:', err);
-      // Seamless client-side fallback
-      initializeClientRoom({
-        hostName: userName.trim(),
-        roomName: roomName.trim() + ' (' + selectedVibe + ')',
-        avatarEmoji: selectedAvatar
-      });
-      playSuccessFanfare();
+      console.error('Create room error:', err);
+      setErrorMessage(err.message || 'Could not create room. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -112,8 +106,8 @@ export const RoomLobby = () => {
     playClickSound();
     try {
       await joinRoom({
-        roomCode: roomCode.trim().toUpperCase(),
-        memberName: userName.trim(),
+        code: roomCode.trim().toUpperCase(),
+        userName: userName.trim(),
         passcode: passcode.trim(),
         avatarEmoji: selectedAvatar
       });
@@ -124,14 +118,8 @@ export const RoomLobby = () => {
         origin: { y: 0.6 }
       });
     } catch (err) {
-      console.warn('Socket join failed, initializing client room fallback:', err);
-      initializeClientRoom({
-        hostName: userName.trim(),
-        roomName: 'Connected Room (' + roomCode.toUpperCase() + ')',
-        avatarEmoji: selectedAvatar,
-        customCode: roomCode.trim().toUpperCase()
-      });
-      playSuccessFanfare();
+      console.error('Join room error:', err);
+      setErrorMessage(err.message || 'Room not found or incorrect code. Please verify and try again.');
     } finally {
       setIsLoading(false);
     }
