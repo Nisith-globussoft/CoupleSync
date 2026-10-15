@@ -2,6 +2,20 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { io } from 'socket.io-client';
 
 const RoomContext = createContext(null);
+const PRODUCTION_BACKEND_URL = 'https://couplesyncv1.onrender.com';
+
+const getBackendUrl = () => {
+  if (import.meta.env.VITE_SERVER_URL) {
+    return import.meta.env.VITE_SERVER_URL.trim().replace(/\/$/, '');
+  }
+  if (
+    typeof window !== 'undefined' &&
+    (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+  ) {
+    return 'http://localhost:5000';
+  }
+  return PRODUCTION_BACKEND_URL;
+};
 
 export const useRoom = () => {
   const context = useContext(RoomContext);
@@ -64,42 +78,9 @@ export const RoomProvider = ({ children }) => {
   });
   const [activeTab, setActiveTab] = useState('movies');
   const [activeGame, setActiveGame] = useState(null);
-  const [connected, setConnected] = useState(false);
   const [floatingHeartTrigger, setFloatingHeartTrigger] = useState(null);
   const [toastMessage, setToastMessage] = useState(null);
-
-  // Default to real Render backend URL when not on localhost
-  const getBackendUrl = () => {
-    if (typeof window === 'undefined') return 'http://localhost:5000';
-    const params = new URLSearchParams(window.location.search);
-    const fromQuery = params.get('server');
-    if (fromQuery) {
-      localStorage.setItem('couplesync_server_url', fromQuery.trim());
-      return fromQuery.trim();
-    }
-    const fromStorage = localStorage.getItem('couplesync_server_url');
-    if (fromStorage && fromStorage.trim()) {
-      return fromStorage.trim();
-    }
-    if (import.meta.env.VITE_SERVER_URL) {
-      return import.meta.env.VITE_SERVER_URL;
-    }
-    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-      return 'http://localhost:5000';
-    }
-    return 'https://couplesync-api.onrender.com';
-  };
-
-  const [backendUrl, setBackendUrlState] = useState(getBackendUrl());
-  const socketUrl = backendUrl;
-
-  const updateBackendUrl = (newUrl) => {
-    if (!newUrl) return;
-    const cleaned = newUrl.trim().replace(/\/$/, '');
-    localStorage.setItem('couplesync_server_url', cleaned);
-    setBackendUrlState(cleaned);
-    window.location.reload();
-  };
+  const socketUrl = getBackendUrl();
 
   useEffect(() => {
     console.log('[RoomContext] Connecting to backend server:', socketUrl);
@@ -113,12 +94,10 @@ export const RoomProvider = ({ children }) => {
 
     s.on('connect', () => {
       console.log('[Socket] Connected to real backend:', s.id);
-      setConnected(true);
     });
 
     s.on('disconnect', () => {
       console.log('[Socket] Disconnected from backend');
-      setConnected(false);
     });
 
     s.on('room:sync_state', (updatedRoom) => {
@@ -402,7 +381,6 @@ export const RoomProvider = ({ children }) => {
         setActiveTab,
         activeGame,
         setActiveGame,
-        connected,
         socket,
         createRoom,
         joinRoom,
@@ -420,9 +398,7 @@ export const RoomProvider = ({ children }) => {
         floatingHeartTrigger,
         triggerFloatingHearts,
         toastMessage,
-        showToast,
-        backendUrl,
-        updateBackendUrl
+        showToast
       }}
     >
       {children}

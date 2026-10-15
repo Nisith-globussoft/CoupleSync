@@ -39,7 +39,7 @@ const VIBES = [
 ];
 
 export const RoomLobby = () => {
-  const { createRoom, joinRoom, currentUser, connected, backendUrl, updateBackendUrl } = useRoom();
+  const { createRoom, joinRoom, currentUser } = useRoom();
 
   const [mode, setMode] = useState('create'); // 'create' | 'join'
   const [userName, setUserName] = useState(() => {
@@ -48,8 +48,6 @@ export const RoomLobby = () => {
     }
     return '';
   });
-  const [showServerModal, setShowServerModal] = useState(false);
-  const [customServerInput, setCustomServerInput] = useState(backendUrl || '');
   const [selectedAvatar, setSelectedAvatar] = useState(currentUser?.avatarEmoji || '🐱');
   const [selectedVibe, setSelectedVibe] = useState('🕯️ Candlelight Date');
   const [roomName, setRoomName] = useState('Cozy Date Night');
@@ -449,107 +447,6 @@ export const RoomLobby = () => {
             </button>
           </form>
 
-          {/* Server Connection Status & Config Button */}
-          <div style={{ marginTop: '16px', paddingTop: '12px', borderTop: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.75rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span style={{
-                width: '7px',
-                height: '7px',
-                borderRadius: '50%',
-                background: connected ? '#10b981' : '#f59e0b',
-                boxShadow: connected ? '0 0 6px #10b981' : '0 0 6px #f59e0b'
-              }} />
-              <span style={{ color: 'var(--text-dim)' }}>
-                Server: <strong style={{ color: connected ? '#10b981' : 'var(--text-muted)' }}>{connected ? 'Connected' : 'Connecting...'}</strong>
-              </span>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => {
-                setCustomServerInput(backendUrl || '');
-                setShowServerModal(true);
-              }}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: 'var(--accent-pink)',
-                fontSize: '0.75rem',
-                cursor: 'pointer',
-                fontWeight: 600,
-                textDecoration: 'underline'
-              }}
-            >
-              ⚙️ Server Settings
-            </button>
-          </div>
-
-          {/* Server Settings Modal */}
-          {showServerModal && (
-            <div style={{
-              position: 'fixed',
-              top: 0,
-              left: 0,
-              width: '100vw',
-              height: '100vh',
-              background: 'rgba(0,0,0,0.75)',
-              backdropFilter: 'blur(8px)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              zIndex: 99999,
-              padding: '16px'
-            }}>
-              <div className="glass-panel" style={{ maxWidth: '440px', width: '100%', padding: '24px' }}>
-                <h3 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#fff', marginBottom: '8px' }}>
-                  ⚙️ Backend Server URL
-                </h3>
-                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '14px', lineHeight: 1.45 }}>
-                  Enter your deployed Render backend URL (e.g. <code>https://your-app.onrender.com</code>):
-                </p>
-
-                <input
-                  type="text"
-                  value={customServerInput}
-                  onChange={(e) => setCustomServerInput(e.target.value)}
-                  placeholder="https://your-service.onrender.com"
-                  style={{
-                    width: '100%',
-                    padding: '10px 14px',
-                    borderRadius: '10px',
-                    background: 'rgba(0,0,0,0.4)',
-                    border: '1px solid var(--border-glow)',
-                    color: '#fff',
-                    fontSize: '15px',
-                    marginBottom: '16px',
-                    outline: 'none'
-                  }}
-                />
-
-                <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-                  <button
-                    type="button"
-                    onClick={() => setShowServerModal(false)}
-                    className="btn-secondary"
-                    style={{ padding: '8px 16px', fontSize: '0.85rem' }}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      updateBackendUrl(customServerInput);
-                      setShowServerModal(false);
-                    }}
-                    className="btn-primary"
-                    style={{ padding: '8px 18px', fontSize: '0.85rem' }}
-                  >
-                    Save & Connect
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
         </div>
       </div>
 
