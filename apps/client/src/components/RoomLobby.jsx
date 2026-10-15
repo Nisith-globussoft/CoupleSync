@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useRoom } from '../context/RoomContext';
 import { playClickSound, playHeartSound, playSuccessFanfare } from '../utils/soundEffects';
 import {
@@ -55,6 +55,11 @@ export const RoomLobby = () => {
   const [passcode, setPasscode] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const errorMessageRef = useRef(null);
+
+  useEffect(() => {
+    if (errorMessage) errorMessageRef.current?.focus();
+  }, [errorMessage]);
 
   // Check URL query param for invite code e.g. ?room=LOVE-4821
   useEffect(() => {
@@ -196,6 +201,7 @@ export const RoomLobby = () => {
           }}>
             <button
               type="button"
+              aria-pressed={mode === 'create'}
               onClick={() => {
                 playClickSound();
                 setMode('create');
@@ -222,6 +228,7 @@ export const RoomLobby = () => {
             </button>
             <button
               type="button"
+              aria-pressed={mode === 'join'}
               onClick={() => {
                 playClickSound();
                 setMode('join');
@@ -251,12 +258,14 @@ export const RoomLobby = () => {
           <form onSubmit={mode === 'create' ? handleCreate : handleJoin} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             {/* Nickname Input */}
             <div>
-              <label style={{ fontSize: '0.82rem', color: 'var(--text-muted)', fontWeight: 600, display: 'block', marginBottom: '6px' }}>
+              <label htmlFor="couplesync-nickname" style={{ fontSize: '0.82rem', color: 'var(--text-muted)', fontWeight: 600, display: 'block', marginBottom: '6px' }}>
                 Your Nickname
               </label>
               <input
+                id="couplesync-nickname"
                 type="text"
                 placeholder="e.g. Baby, Honey, Nisith..."
+                autoComplete="nickname"
                 value={userName}
                 onChange={(e) => setUserName(e.target.value)}
                 maxLength={24}
@@ -276,20 +285,21 @@ export const RoomLobby = () => {
 
             {/* Avatar Selector (Clean 4x2 Grid for Mobile) */}
             <div>
-              <label style={{ fontSize: '0.82rem', color: 'var(--text-muted)', fontWeight: 600, display: 'block', marginBottom: '8px' }}>
+              <label id="couplesync-avatar-label" style={{ fontSize: '0.82rem', color: 'var(--text-muted)', fontWeight: 600, display: 'block', marginBottom: '8px' }}>
                 Choose Your Vibe Avatar
               </label>
               <div style={{
                 display: 'grid',
                 gridTemplateColumns: 'repeat(4, 1fr)',
                 gap: '8px'
-              }}>
+              }} role="group" aria-labelledby="couplesync-avatar-label">
                 {AVATARS.map((a) => {
                   const isSelected = selectedAvatar === a.emoji;
                   return (
                     <button
                       key={a.id}
                       type="button"
+                      aria-pressed={isSelected}
                       onClick={() => {
                         playClickSound();
                         setSelectedAvatar(a.emoji);
@@ -301,6 +311,7 @@ export const RoomLobby = () => {
                         justifyContent: 'center',
                         gap: '2px',
                         padding: '8px 4px',
+                        minHeight: '44px',
                         borderRadius: '12px',
                         background: isSelected ? 'rgba(236, 72, 153, 0.2)' : 'rgba(255, 255, 255, 0.04)',
                         border: isSelected ? '2px solid var(--accent-pink)' : '1px solid var(--border-subtle)',
@@ -323,10 +334,11 @@ export const RoomLobby = () => {
               <>
                 {/* Mood / Vibe Selector */}
                 <div>
-                  <label style={{ fontSize: '0.82rem', color: 'var(--text-muted)', fontWeight: 600, display: 'block', marginBottom: '6px' }}>
+                  <label htmlFor="couplesync-vibe" style={{ fontSize: '0.82rem', color: 'var(--text-muted)', fontWeight: 600, display: 'block', marginBottom: '6px' }}>
                     Tonight's Vibe
                   </label>
                   <select
+                    id="couplesync-vibe"
                     value={selectedVibe}
                     onChange={(e) => setSelectedVibe(e.target.value)}
                     style={{
@@ -351,10 +363,11 @@ export const RoomLobby = () => {
 
                 {/* Room Name */}
                 <div>
-                  <label style={{ fontSize: '0.82rem', color: 'var(--text-muted)', fontWeight: 600, display: 'block', marginBottom: '6px' }}>
+                  <label htmlFor="couplesync-room-name" style={{ fontSize: '0.82rem', color: 'var(--text-muted)', fontWeight: 600, display: 'block', marginBottom: '6px' }}>
                     Room Name
                   </label>
                   <input
+                    id="couplesync-room-name"
                     type="text"
                     placeholder="e.g. Our Cozy Hangout"
                     value={roomName}
@@ -375,10 +388,11 @@ export const RoomLobby = () => {
               </>
             ) : (
               <div>
-                <label style={{ fontSize: '0.82rem', color: 'var(--text-muted)', fontWeight: 600, display: 'block', marginBottom: '6px' }}>
+                <label htmlFor="couplesync-room-code" style={{ fontSize: '0.82rem', color: 'var(--text-muted)', fontWeight: 600, display: 'block', marginBottom: '6px' }}>
                   6-Digit Room Code
                 </label>
                 <input
+                  id="couplesync-room-code"
                   type="text"
                   placeholder="e.g. LOVE-4821"
                   value={roomCode}
@@ -412,7 +426,7 @@ export const RoomLobby = () => {
                 color: '#f43f5e',
                 fontSize: '0.85rem',
                 textAlign: 'center'
-              }}>
+              }} ref={errorMessageRef} role="alert" aria-atomic="true" tabIndex={-1}>
                 {errorMessage}
               </div>
             )}
@@ -421,6 +435,8 @@ export const RoomLobby = () => {
             <button
               type="submit"
               disabled={isLoading}
+              aria-busy={isLoading}
+              aria-live="polite"
               className="btn-primary"
               style={{
                 padding: '14px',

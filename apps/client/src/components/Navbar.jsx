@@ -8,13 +8,17 @@ export const Navbar = ({ onOpenMembers }) => {
   const [copied, setCopied] = useState(false);
   const [muted, setMuted] = useState(isMuted());
 
-  const handleCopyCode = () => {
+  const handleCopyCode = async () => {
     if (!room) return;
     playClickSound();
-    navigator.clipboard.writeText(room.code);
-    setCopied(true);
-    showToast('Room code copied: ' + room.code);
-    setTimeout(() => setCopied(false), 2000);
+    try {
+      await navigator.clipboard.writeText(room.code);
+      setCopied(true);
+      showToast('Room code copied: ' + room.code);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      showToast('Could not copy the room code. Please try again.');
+    }
   };
 
   const handleToggleSound = () => {
@@ -94,14 +98,17 @@ export const Navbar = ({ onOpenMembers }) => {
       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
         {/* Sound FX Toggle */}
         <button
+          type="button"
+          aria-label={muted ? 'Enable interface sounds' : 'Mute interface sounds'}
+          aria-pressed={!muted}
           onClick={handleToggleSound}
           title={muted ? "Unmute Sound FX" : "Mute Sound FX"}
           style={{
             background: 'rgba(255, 255, 255, 0.06)',
             border: '1px solid var(--border-subtle)',
             borderRadius: '50%',
-            width: '32px',
-            height: '32px',
+            width: '44px',
+            height: '44px',
             color: muted ? 'var(--text-dim)' : '#ec4899',
             cursor: 'pointer',
             display: 'flex',
@@ -118,6 +125,8 @@ export const Navbar = ({ onOpenMembers }) => {
           <>
             {/* Quick Heart Burst */}
             <button
+              type="button"
+              aria-label="Send a heart to your partner"
               onClick={() => {
                 playClickSound();
                 sendFloatingHeart();
@@ -128,6 +137,8 @@ export const Navbar = ({ onOpenMembers }) => {
                 border: '1px solid var(--border-pink)',
                 borderRadius: '999px',
                 padding: '5px 10px',
+                minWidth: '44px',
+                minHeight: '44px',
                 color: '#f43f5e',
                 cursor: 'pointer',
                 display: 'flex',
@@ -144,6 +155,8 @@ export const Navbar = ({ onOpenMembers }) => {
 
             {/* Room Code Pill */}
             <button
+              type="button"
+              aria-label={copied ? 'Room code copied' : `Copy room code ${room.code}`}
               onClick={handleCopyCode}
               title="Click to copy Room Code"
               style={{
@@ -168,6 +181,8 @@ export const Navbar = ({ onOpenMembers }) => {
 
             {/* Members Counter */}
             <button
+              type="button"
+              aria-label={`View room members, ${room.members.length} online`}
               onClick={() => {
                 playClickSound();
                 onOpenMembers();
@@ -178,6 +193,7 @@ export const Navbar = ({ onOpenMembers }) => {
                 border: '1px solid var(--border-subtle)',
                 borderRadius: '999px',
                 padding: '5px 9px',
+                minHeight: '44px',
                 color: 'var(--text-main)',
                 cursor: 'pointer',
                 display: 'flex',
@@ -201,6 +217,8 @@ export const Navbar = ({ onOpenMembers }) => {
 
             {/* Leave Room Button */}
             <button
+              type="button"
+              aria-label="Leave room"
               onClick={() => {
                 playClickSound();
                 leaveRoom();
@@ -211,6 +229,8 @@ export const Navbar = ({ onOpenMembers }) => {
                 border: '1px solid rgba(244, 63, 94, 0.3)',
                 borderRadius: '999px',
                 padding: '6px 8px',
+                minWidth: '44px',
+                minHeight: '44px',
                 color: '#f43f5e',
                 cursor: 'pointer',
                 display: 'flex',

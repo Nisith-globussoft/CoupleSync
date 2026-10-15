@@ -120,9 +120,11 @@ export const RoomView = () => {
           gap: '4px',
           overflowX: 'auto',
           scrollbarWidth: 'none'
-        }}>
+        }} role="group" aria-label="Room sections">
           {/* Movie Stream Tab */}
           <button
+            type="button"
+            aria-pressed={activeTab === 'movies'}
             onClick={() => handleTabChange('movies')}
             style={{
               flex: 1,
@@ -131,6 +133,7 @@ export const RoomView = () => {
               border: 'none',
               borderRadius: '999px',
               padding: '9px 12px',
+              minHeight: '44px',
               fontSize: '0.84rem',
               fontWeight: 700,
               cursor: 'pointer',
@@ -149,6 +152,8 @@ export const RoomView = () => {
 
           {/* Music Tab */}
           <button
+            type="button"
+            aria-pressed={activeTab === 'music'}
             onClick={() => handleTabChange('music')}
             style={{
               flex: 1,
@@ -157,6 +162,7 @@ export const RoomView = () => {
               border: 'none',
               borderRadius: '999px',
               padding: '9px 12px',
+              minHeight: '44px',
               fontSize: '0.84rem',
               fontWeight: 700,
               cursor: 'pointer',
@@ -175,6 +181,8 @@ export const RoomView = () => {
 
           {/* Games Tab */}
           <button
+            type="button"
+            aria-pressed={activeTab === 'games'}
             onClick={() => handleTabChange('games')}
             style={{
               flex: 1,
@@ -183,6 +191,7 @@ export const RoomView = () => {
               border: 'none',
               borderRadius: '999px',
               padding: '9px 12px',
+              minHeight: '44px',
               fontSize: '0.84rem',
               fontWeight: 700,
               cursor: 'pointer',
@@ -201,6 +210,8 @@ export const RoomView = () => {
 
           {/* Chat Tab */}
           <button
+            type="button"
+            aria-pressed={activeTab === 'chat'}
             onClick={() => handleTabChange('chat')}
             style={{
               flex: 1,
@@ -209,6 +220,7 @@ export const RoomView = () => {
               border: 'none',
               borderRadius: '999px',
               padding: '9px 12px',
+              minHeight: '44px',
               fontSize: '0.84rem',
               fontWeight: 700,
               cursor: 'pointer',
@@ -227,6 +239,8 @@ export const RoomView = () => {
 
           {/* Love Wall Tab */}
           <button
+            type="button"
+            aria-pressed={activeTab === 'love_wall'}
             onClick={() => handleTabChange('love_wall')}
             style={{
               flex: 1,
@@ -235,6 +249,7 @@ export const RoomView = () => {
               border: 'none',
               borderRadius: '999px',
               padding: '9px 12px',
+              minHeight: '44px',
               fontSize: '0.84rem',
               fontWeight: 700,
               cursor: 'pointer',
@@ -321,8 +336,10 @@ export const RoomView = () => {
       </div>
 
       {/* Native App-Style Mobile Bottom Navigation Dock */}
-      <nav className="mobile-bottom-dock">
+      <nav className="mobile-bottom-dock" aria-label="Room sections">
         <button
+          type="button"
+          aria-pressed={activeTab === 'movies'}
           onClick={() => handleTabChange('movies')}
           className={'mobile-dock-btn ' + (activeTab === 'movies' ? 'active' : '')}
         >
@@ -333,6 +350,8 @@ export const RoomView = () => {
         </button>
 
         <button
+          type="button"
+          aria-pressed={activeTab === 'music'}
           onClick={() => handleTabChange('music')}
           className={'mobile-dock-btn ' + (activeTab === 'music' ? 'active' : '')}
         >
@@ -343,6 +362,8 @@ export const RoomView = () => {
         </button>
 
         <button
+          type="button"
+          aria-pressed={activeTab === 'games'}
           onClick={() => handleTabChange('games')}
           className={'mobile-dock-btn ' + (activeTab === 'games' ? 'active' : '')}
         >
@@ -353,6 +374,8 @@ export const RoomView = () => {
         </button>
 
         <button
+          type="button"
+          aria-pressed={activeTab === 'chat'}
           onClick={() => handleTabChange('chat')}
           className={'mobile-dock-btn ' + (activeTab === 'chat' ? 'active' : '')}
         >
@@ -363,6 +386,8 @@ export const RoomView = () => {
         </button>
 
         <button
+          type="button"
+          aria-pressed={activeTab === 'love_wall'}
           onClick={() => handleTabChange('love_wall')}
           className={'mobile-dock-btn ' + (activeTab === 'love_wall' ? 'active' : '')}
         >
